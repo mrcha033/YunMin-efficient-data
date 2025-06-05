@@ -33,6 +33,10 @@ check_python() {
         exit 1
     fi
 
+    if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 12 ]; then
+        log_message "Python 3.12+ detected. PyTorch 2.2 or higher is required."
+    fi
+
     log_message "Python $PYTHON_VERSION found"
 }
 
