@@ -1,0 +1,64 @@
+# Data Efficiency Method (DEM) Configuration
+
+# Training Settings
+training:
+  learning_rate: 5e-5
+  batch_size: 8
+  max_epochs: 1
+  gradient_checkpointing: true
+  fp16: true
+  warmup_steps: 100
+  
+# LoRA Configuration
+lora:
+  r: 8
+  alpha: 32
+  dropout: 0.1
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+
+# Base Model
+base_model:
+  name: "yunmin-mamba"
+  size: "3b"
+  path: "s3://yunmin-data/models/base/"
+
+# Domain Weights for Merging
+# These weights determine how much each domain contributes to the final merged model
+domain_weights:
+  main_data: 0.4
+  textbook: 0.25
+  assembly: 0.15
+  web: 0.15
+  social: 0.05
+
+# Merging Strategy
+merging:
+  method: "weighted_average"  # Options: weighted_average, slerp, dare
+  normalize_weights: true
+  
+  # Validation during merging
+  validation:
+    enabled: true
+    test_prompts: 10
+    check_convergence: true
+
+# Output Paths
+output_paths:
+  lora_adapters: "s3://yunmin-data/models/lora/"
+  diff_vectors: "s3://yunmin-data/models/diff_vectors/"
+  merged_model: "s3://yunmin-data/models/merged/"
+  
+# Evaluation Settings
+evaluation:
+  metrics:
+    - "perplexity"
+    - "bleu"
+    - "rouge"
+    - "bertscore"
+  
+  prompt_file: "evaluation/eval_prompts.jsonl"
+  num_eval_samples: 100 

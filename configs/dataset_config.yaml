@@ -1,0 +1,62 @@
+# Dataset Configuration for YunMin-EfficientData
+
+# Cloud Storage Settings
+storage:
+  provider: "s3"  # Options: s3, gcs, local
+  bucket: "yunmin-data"
+  region: "ap-northeast-2"
+
+# Data Paths
+paths:
+  raw_data: "s3://yunmin-data/raw/"
+  dedup_ready: "s3://yunmin-data/dedup_ready/"
+  deduped: "s3://yunmin-data/deduped/"
+  parquet: "s3://yunmin-data/parquet/"
+
+# Dataset Schema
+schema:
+  required_columns:
+    - "text"
+    - "tokens"
+    - "source"
+    - "lang"
+    - "domain"
+  
+  column_types:
+    text: "string"
+    tokens: "list[string]"
+    source: "string"
+    lang: "string"
+    domain: "categorical"
+
+# Domains
+domains:
+  - "main_data"
+  - "textbook"
+  - "assembly"
+  - "web"
+  - "social"
+
+# Tokenization Settings
+tokenization:
+  tokenizer_name: "sentencepiece"
+  vocab_size: 32000
+  model_max_length: 2048
+  special_tokens:
+    - "<s>"
+    - "</s>"
+    - "<unk>"
+    - "<pad>"
+
+# Processing Settings
+processing:
+  chunk_size: 1000  # Number of samples to process at once
+  max_workers: 4
+  encoding: "utf-8"
+  
+# Validation
+validation:
+  sample_size: 100  # Number of samples for validation
+  check_format: true
+  check_encoding: true
+  check_schema: true 
