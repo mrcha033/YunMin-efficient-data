@@ -1,9 +1,14 @@
 """Tests for evaluation runner and metrics computation."""
 
 from unittest.mock import MagicMock, patch
-import sys
-sys.path.append('..')
+import pytest
+
+pytest.importorskip("bert_score")
+pytest.importorskip("rouge_score")
+pytest.importorskip("sacrebleu")
+
 from evaluation.eval_runner import run_evaluation
+from evaluation.compute_metrics import compute_metrics
 
 
 def test_run_evaluation_computes_metrics() -> None:
@@ -19,6 +24,8 @@ def test_run_evaluation_computes_metrics() -> None:
 
     assert metrics == {"score": 1.0}
     metric_mock.assert_called_once_with(["Hello"], ["merged"])
+
+
 def test_evaluation_functions_exist() -> None:
     """Check that evaluation functions are callable."""
     assert callable(compute_metrics)
@@ -36,7 +43,8 @@ def test_compute_metrics_non_zero_scores() -> None:
     assert scores["rougeL"] > 0
     assert scores["bert_score_f1"] > 0
 
-    def test_compute_metrics_simple() -> None:
+
+def test_compute_metrics_simple() -> None:
     """Metrics should return scores for identical sentences."""
     references = ["안녕하세요"]
     predictions = ["안녕하세요"]
@@ -49,7 +57,7 @@ def test_compute_metrics_non_zero_scores() -> None:
 
 
 def test_run_evaluation_smoke(monkeypatch) -> None:
-    """run_evaluation should invoke compute_metrics on prompts."""
+    """``run_evaluation`` should invoke ``compute_metrics`` on prompts."""
 
     called = {"count": 0}
 
@@ -59,6 +67,7 @@ def test_run_evaluation_smoke(monkeypatch) -> None:
 
     monkeypatch.setattr("evaluation.eval_runner.compute_metrics", fake_compute_metrics)
 
-    run_evaluation(["테스트"])
+    run_evaluation("base", "merged", "dummy.jsonl")
 
     assert called["count"] == 1
+
