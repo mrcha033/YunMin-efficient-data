@@ -1,5 +1,6 @@
-import torch
 """Tests for the DEM (Data Efficiency Method) module."""
+
+import torch
 
 from dem.train_individual import train_individual_domain
 from dem.vector_diff import compute_vector_diff
@@ -46,7 +47,7 @@ def test_merge_models_additive() -> None:
     diff1 = {"w1": 0.2, "w2": -0.5}
     diff2 = {"w1": -0.1, "w2": 0.3}
 
-    merged = merge_models(base, [diff1, diff2])
+    merged = merge_models(base, [(diff1, 1.0), (diff2, 1.0)])
 
     expected = {"w1": 1.1, "w2": 1.8}
     assert merged == expected
