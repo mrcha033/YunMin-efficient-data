@@ -200,6 +200,7 @@ def convert_jsonl_to_parquet(
 ) -> None:
     """
     Convert JSONL file to Parquet format
+    using a cloud storage client for reading
 
     Args:
         input_file: Path to input JSONL file
@@ -208,6 +209,9 @@ def convert_jsonl_to_parquet(
         batch_size: Batch size for processing
     """
     logger = logging.getLogger(__name__)
+
+    # Initialize cloud storage client
+    storage_client = get_storage_client(config)
 
     # Get schema configuration
     schema_config = config.get('schema', {})

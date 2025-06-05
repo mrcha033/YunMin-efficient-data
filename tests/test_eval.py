@@ -45,7 +45,6 @@ def test_compute_metrics_non_zero_scores() -> None:
     assert scores["rougeL"] > 0
     assert scores["bert_score_f1"] > 0
 
-
 def test_compute_metrics_simple() -> None:
     """Metrics should return scores for identical sentences."""
     references = ["안녕하세요"]
@@ -77,4 +76,19 @@ def test_run_evaluation_smoke(monkeypatch) -> None:
     run_evaluation("base", "merged", "dummy.jsonl")
 
     assert called["count"] == 1
+
+
+def test_run_evaluation_no_reference_uses_base_outputs() -> None:
+    """Without explicit references, base outputs become references."""
+
+    prompts = [{"prompt": "Hi"}]
+
+    with patch("evaluation.eval_runner.load_prompts", return_value=prompts), \
+         patch("evaluation.eval_runner.AutoModelForCausalLM", MagicMock()), \
+         patch("evaluation.eval_runner.AutoTokenizer", MagicMock()), \
+         patch("evaluation.eval_runner.generate_responses", side_effect=[["base"], ["merged"]]), \
+         patch("evaluation.eval_runner.compute_metrics", return_value={}) as metric_mock:
+        run_evaluation("base", "merged")
+
+    metric_mock.assert_called_once_with(["base"], ["merged"])
 

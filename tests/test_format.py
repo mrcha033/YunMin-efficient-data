@@ -12,11 +12,9 @@ from format.to_parquet import (
 )
 import pyarrow.parquet as pq
 
-
 def test_to_parquet_exists() -> None:
     """Ensure conversion entrypoint exists."""
     assert callable(to_parquet_main)
-
 
 def test_convert_jsonl_to_parquet(tmp_path) -> None:
     """Convert a tiny JSONL file and verify output."""
