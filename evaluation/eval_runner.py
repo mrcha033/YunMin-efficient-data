@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
-from typing import Any, Dict, Iterable, List
+import logging
 from pathlib import Path
+from typing import Any, Dict, Iterable, List
 
 from evaluation.compute_metrics import compute_metrics
 
@@ -43,6 +44,8 @@ def run_evaluation(
     output_path: str | None = None,
 ) -> Dict[str, float]:
     """Run evaluation comparing base and merged models."""
+    logger = logging.getLogger(__name__)
+
     prompt_entries = load_prompts(prompt_file)
     prompts = [p["prompt"] for p in prompt_entries]
     references = [p.get("reference") for p in prompt_entries]
@@ -70,7 +73,7 @@ def run_evaluation(
         with out_file.open("w", encoding="utf-8") as f:
             json.dump(metrics, f, ensure_ascii=False, indent=2)
 
-    print(metrics)
+    logger.info("Evaluation metrics: %s", metrics)
     return metrics
 
 
