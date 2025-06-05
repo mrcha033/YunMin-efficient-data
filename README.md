@@ -229,6 +229,22 @@ export S3_BUCKET_NAME=yunmin-data
 ./scripts/run_pipeline.sh --log-dir /custom/logs data/raw/dataset.jsonl
 ```
 
+### 유틸리티 CLI 사용
+
+```bash
+# 파일 목록 확인
+python -m utils.cloud_storage s3 --list yunmin-data raw/
+
+# 파일 업로드
+python -m utils.cloud_storage s3 --upload local.txt s3://yunmin-data/raw/local.txt
+
+# JSONL 검증
+python -m utils.data_utils validate data/sample.jsonl
+
+# 매니페스트 생성
+python -m utils.data_utils manifest data/*.jsonl --output manifest.json
+```
+
 ## 🤝 기여하기
 
 1. Fork the repository
