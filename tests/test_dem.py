@@ -30,7 +30,7 @@ def test_training_diff_and_merge() -> None:
 
     merged = merge_models(base, [(diff, 1.0)])
     assert torch.allclose(merged["lora_weight"], lora["lora_weight"], atol=1e-2)
-    
+
 def test_compute_vector_diff_basic() -> None:
     """Verify simple difference calculation between two models."""
     base = {"w1": 1.0, "w2": 2.0}

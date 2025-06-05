@@ -53,7 +53,7 @@ check_file() {
 validate_phase() {
     local phase_name="$1"
     local expected_output="$2"
-    
+
     if [[ -f "$expected_output" ]]; then
         log_message "✅ Phase $phase_name completed successfully: $expected_output"
         return 0
@@ -66,19 +66,19 @@ validate_phase() {
 # Function to run Phase 1: Deduplication
 run_phase1() {
     log_message "🚀 Starting Phase 1: Deduplication"
-    
+
     local input_file="$1"
     local output_file="$DATA_DIR/deduped/$(basename "$input_file" .jsonl)_deduped.jsonl"
-    
+
     check_file "$input_file"
-    
+
     python -m dedup.slimpajama_dedup \
         --config "$DATASET_CONFIG" \
         --input "$input_file" \
         --output "$output_file" \
         --log-file "$LOG_DIR/phase1_dedup.log" \
         2>> "$ERROR_LOG"
-    
+
     validate_phase "1" "$output_file"
     echo "$output_file"
 }
@@ -86,19 +86,19 @@ run_phase1() {
 # Function to run Phase 2: Format Conversion
 run_phase2() {
     log_message "🚀 Starting Phase 2: Format Conversion"
-    
+
     local input_file="$1"
     local output_file="$DATA_DIR/parquet/$(basename "$input_file" .jsonl).parquet"
-    
+
     check_file "$input_file"
-    
+
     python -m format.to_parquet \
         --config "$DATASET_CONFIG" \
         --input "$input_file" \
         --output "$output_file" \
         --benchmark \
         2>> "$ERROR_LOG"
-    
+
     validate_phase "2" "$output_file"
     echo "$output_file"
 }
@@ -106,14 +106,14 @@ run_phase2() {
 # Function to run Phase 3: DEM Training and Merging
 run_phase3() {
     log_message "🚀 Starting Phase 3: DEM Training and Merging"
-    
+
     local parquet_files=("$@")
-    
+
     # Individual LoRA training for each domain
     for parquet_file in "${parquet_files[@]}"; do
         local domain=$(basename "$parquet_file" .parquet)
         log_message "Training LoRA model for domain: $domain"
-        
+
         python -m dem.train_individual \
             --config "$DEM_CONFIG" \
             --data "$parquet_file" \
@@ -121,7 +121,7 @@ run_phase3() {
             --output-dir "models/lora_$domain" \
             2>> "$ERROR_LOG"
     done
-    
+
     # Generate difference vectors
     log_message "Generating difference vectors..."
     python -m dem.vector_diff \
@@ -130,7 +130,7 @@ run_phase3() {
         --lora-dirs models/lora_* \
         --output-dir "models/diff_vectors" \
         2>> "$ERROR_LOG"
-    
+
     # Merge models
     log_message "Merging models..."
     python -m dem.merge_model \
@@ -138,14 +138,14 @@ run_phase3() {
         --diff-vectors-dir "models/diff_vectors" \
         --output-dir "models/merged" \
         2>> "$ERROR_LOG"
-    
+
     validate_phase "3" "models/merged/pytorch_model.bin"
 }
 
 # Function to run Phase 4: Evaluation
 run_phase4() {
     log_message "🚀 Starting Phase 4: Evaluation"
-    
+
     # Run evaluation
     python -m evaluation.eval_runner \
         --base-model "models/base/" \
@@ -153,50 +153,50 @@ run_phase4() {
         --eval-prompts "evaluation/eval_prompts.jsonl" \
         --output-dir "results/" \
         2>> "$ERROR_LOG"
-    
+
     # Compute metrics
     python -m evaluation.compute_metrics \
         --results-dir "results/" \
         --output "results/metric_summary.csv" \
         2>> "$ERROR_LOG"
-    
+
     validate_phase "4" "results/metric_summary.csv"
 }
 
 # Main pipeline function
 run_pipeline() {
     local input_files=("$@")
-    
+
     log_message "🎯 Starting YunMin-EfficientData Pipeline"
     log_message "Input files: ${input_files[*]}"
-    
+
     # Check prerequisites
     log_message "Checking prerequisites..."
     check_command python
     check_command pip
     check_file "$DATASET_CONFIG"
     check_file "$DEM_CONFIG"
-    
+
     # Phase 1: Deduplication
     local deduped_files=()
     for input_file in "${input_files[@]}"; do
         deduped_file=$(run_phase1 "$input_file")
         deduped_files+=("$deduped_file")
     done
-    
+
     # Phase 2: Format Conversion
     local parquet_files=()
     for deduped_file in "${deduped_files[@]}"; do
         parquet_file=$(run_phase2 "$deduped_file")
         parquet_files+=("$parquet_file")
     done
-    
+
     # Phase 3: DEM Training and Merging
     run_phase3 "${parquet_files[@]}"
-    
+
     # Phase 4: Evaluation
     run_phase4
-    
+
     log_message "🎉 Pipeline completed successfully!"
 }
 
@@ -223,10 +223,10 @@ OPTIONS:
 EXAMPLES:
     # Run full pipeline
     $0 data/raw/dataset1.jsonl data/raw/dataset2.jsonl
-    
+
     # Run only deduplication
     $0 --phase1-only data/raw/dataset.jsonl
-    
+
     # Run pipeline skipping evaluation
     $0 --skip-phase4 data/raw/dataset.jsonl
 
@@ -326,7 +326,7 @@ elif [[ "$PHASE4_ONLY" == true ]]; then
 else
     # Run full pipeline with skip options
     input_files=("$@")
-    
+
     if [[ "$SKIP_PHASE1" == false ]]; then
         deduped_files=()
         for input_file in "${input_files[@]}"; do
@@ -335,7 +335,7 @@ else
         done
         input_files=("${deduped_files[@]}")
     fi
-    
+
     if [[ "$SKIP_PHASE2" == false ]]; then
         parquet_files=()
         for input_file in "${input_files[@]}"; do
@@ -344,14 +344,14 @@ else
         done
         input_files=("${parquet_files[@]}")
     fi
-    
+
     if [[ "$SKIP_PHASE3" == false ]]; then
         run_phase3 "${input_files[@]}"
     fi
-    
+
     if [[ "$SKIP_PHASE4" == false ]]; then
         run_phase4
     fi
-    
+
     log_message "🎉 Pipeline completed successfully!"
-fi 
+fi

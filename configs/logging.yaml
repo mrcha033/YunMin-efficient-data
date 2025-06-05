@@ -7,7 +7,7 @@ formatters:
   default:
     format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     datefmt: "%Y-%m-%d %H:%M:%S"
-  
+
   detailed:
     format: "%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(funcName)s:%(lineno)d - %(message)s"
     datefmt: "%Y-%m-%d %H:%M:%S"
@@ -45,22 +45,22 @@ loggers:
     level: DEBUG
     handlers: [console, file, error_file]
     propagate: false
-  
+
   yunmin.dedup:
     level: DEBUG
     handlers: [console, file, phase_file]
     propagate: false
-    
+
   yunmin.format:
     level: DEBUG
     handlers: [console, file, phase_file]
     propagate: false
-    
+
   yunmin.dem:
     level: DEBUG
     handlers: [console, file, phase_file]
     propagate: false
-    
+
   yunmin.evaluation:
     level: DEBUG
     handlers: [console, file, phase_file]
@@ -68,4 +68,4 @@ loggers:
 
 root:
   level: INFO
-  handlers: [console, file] 
+  handlers: [console, file]
