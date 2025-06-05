@@ -15,8 +15,8 @@ except Exception:  # pragma: no cover - dependency may be missing
 __version__ = "1.0.0"
 __all__ = [
     "run_deduplication",
-    "tokenize_ngrams", 
+    "tokenize_ngrams",
     "create_minhash",
     "jaccard_similarity",
     "select_representative_document"
-] 
+]

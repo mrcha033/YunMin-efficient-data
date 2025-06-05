@@ -15,6 +15,6 @@ __version__ = "1.0.0"
 __all__ = [
     "run_conversion",
     "create_schema",
-    "validate_parquet_file", 
+    "validate_parquet_file",
     "get_parquet_info"
-] 
+]

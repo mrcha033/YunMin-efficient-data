@@ -10,7 +10,7 @@ from .data_utils import validate_jsonl_format, get_file_info
 __version__ = "1.0.0"
 __all__ = [
     "CloudStorageManager",
-    "get_storage_client", 
+    "get_storage_client",
     "validate_jsonl_format",
     "get_file_info"
-] 
+]

@@ -2,6 +2,11 @@
 
 from unittest.mock import MagicMock, patch
 from pathlib import Path
+import pytest
+
+pytest.importorskip("bert_score")
+pytest.importorskip("rouge_score")
+pytest.importorskip("sacrebleu")
 
 from evaluation.eval_runner import run_evaluation
 from evaluation.compute_metrics import compute_metrics
@@ -22,7 +27,6 @@ def test_run_evaluation_computes_metrics(tmp_path) -> None:
     assert metrics == {"score": 1.0}
     metric_mock.assert_called_once_with(["Hello"], ["merged"])
     assert out_file.exists()
-
 
 def test_evaluation_functions_exist() -> None:
     """Check that evaluation functions are callable."""
@@ -55,7 +59,7 @@ def test_compute_metrics_simple() -> None:
 
 
 def test_run_evaluation_smoke(monkeypatch) -> None:
-    """run_evaluation should invoke compute_metrics on prompts."""
+    """``run_evaluation`` should invoke ``compute_metrics`` on prompts."""
 
     called = {"count": 0}
 
@@ -70,4 +74,7 @@ def test_run_evaluation_smoke(monkeypatch) -> None:
          patch("evaluation.eval_runner.generate_responses", side_effect=[["base"], ["merged"]]):
         run_evaluation("base", "merged")
 
+    run_evaluation("base", "merged", "dummy.jsonl")
+
     assert called["count"] == 1
+

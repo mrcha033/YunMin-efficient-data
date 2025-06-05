@@ -8,7 +8,7 @@ training:
   gradient_checkpointing: true
   fp16: true
   warmup_steps: 100
-  
+
 # LoRA Configuration
 lora:
   r: 8
@@ -39,7 +39,7 @@ domain_weights:
 merging:
   method: "weighted_average"  # Options: weighted_average, slerp, dare
   normalize_weights: true
-  
+
   # Validation during merging
   validation:
     enabled: true
@@ -53,7 +53,7 @@ output_paths:
   merged_model: "s3://yunmin-data/models/merged/"
   logs: "s3://yunmin-data/logs/"
   checkpoints: "s3://yunmin-data/checkpoints/"
-  
+
 # Evaluation Settings
 evaluation:
   metrics:
@@ -61,6 +61,6 @@ evaluation:
     - "bleu"
     - "rouge"
     - "bertscore"
-  
+
   prompt_file: "evaluation/eval_prompts.jsonl"
-  num_eval_samples: 100 
+  num_eval_samples: 100
