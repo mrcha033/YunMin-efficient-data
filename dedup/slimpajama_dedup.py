@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import time
+import io
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 import argparse
@@ -173,7 +174,9 @@ def build_minhash_index(documents: List[Dict], config: Dict) -> Tuple[MinHashLSH
     return lsh, minhashes
 
 
-def find_duplicate_clusters(lsh: MinHashLSH, minhashes: Dict[str, MinHash]) -> List[Set[str]]:
+def find_duplicate_clusters(
+    lsh: MinHashLSH, minhashes: Dict[str, MinHash]
+) -> Tuple[List[Set[str]], List[Tuple[str, str]]]:
     """
     Find clusters of duplicate documents
 
@@ -182,12 +185,13 @@ def find_duplicate_clusters(lsh: MinHashLSH, minhashes: Dict[str, MinHash]) -> L
         minhashes: Document ID to MinHash mapping
 
     Returns:
-        List of document ID clusters
+        Tuple of (clusters, candidate pairs)
     """
     logger = logging.getLogger(__name__)
 
-    clusters = []
-    processed = set()
+    clusters: List[Set[str]] = []
+    processed: Set[str] = set()
+    candidate_pairs: List[Tuple[str, str]] = []
 
     for doc_id in tqdm(minhashes.keys(), desc="Finding duplicates"):
         if doc_id in processed:
@@ -195,6 +199,9 @@ def find_duplicate_clusters(lsh: MinHashLSH, minhashes: Dict[str, MinHash]) -> L
 
         # Find similar documents
         candidates = lsh.query(minhashes[doc_id])
+        for cand in candidates:
+            if cand != doc_id:
+                candidate_pairs.append((doc_id, cand))
 
         if len(candidates) > 1:  # Found duplicates
             cluster = set(candidates)
@@ -204,7 +211,7 @@ def find_duplicate_clusters(lsh: MinHashLSH, minhashes: Dict[str, MinHash]) -> L
             processed.add(doc_id)
 
     logger.info(f"Found {len(clusters)} duplicate clusters")
-    return clusters
+    return clusters, candidate_pairs
 
 
 def deduplicate_documents(documents: List[Dict], duplicate_clusters: List[Set[str]]) -> Tuple[List[Dict], Dict]:
@@ -274,8 +281,15 @@ def main():
     parser.add_argument("--input", required=True, help="Input JSONL file path (cloud storage path)")
     parser.add_argument("--output", required=True, help="Output JSONL file path (cloud storage path)")
     parser.add_argument("--log-file", help="Additional log file for this run")
+    parser.add_argument("--candidates", help="Path to save candidate pairs JSON")
+    parser.add_argument("--log-csv", help="Path to deduplication log CSV")
 
     args = parser.parse_args()
+
+    if not args.candidates:
+        args.candidates = os.path.join(os.path.dirname(args.output), "candidates.json")
+    if not args.log_csv:
+        args.log_csv = os.path.join(os.path.dirname(args.output), "dedup_log.csv")
 
     # Setup logging
     logger = setup_logging()
@@ -315,7 +329,7 @@ def main():
         lsh, minhashes = build_minhash_index(documents, config)
 
         # Find duplicate clusters
-        duplicate_clusters = find_duplicate_clusters(lsh, minhashes)
+        duplicate_clusters, candidate_pairs = find_duplicate_clusters(lsh, minhashes)
 
         # Deduplicate
         deduplicated_docs, stats = deduplicate_documents(documents, duplicate_clusters)
@@ -331,6 +345,10 @@ def main():
         if not success:
             raise Exception("Failed to save results to cloud storage")
 
+        # Save candidate pairs
+        candidates_json = json.dumps(candidate_pairs, ensure_ascii=False, indent=2)
+        storage_client.write_text_file(args.candidates, candidates_json)
+
         # Save statistics
         stats_path = args.output.replace('.jsonl', '_stats.json')
         stats_content = json.dumps(stats, indent=2, ensure_ascii=False)
@@ -342,6 +360,26 @@ def main():
         logger.info(f"Deduplication completed in {processing_time:.2f} seconds")
         logger.info(f"Results saved to cloud storage: {args.output}")
         logger.info(f"Statistics saved to cloud storage: {stats_path}")
+
+        # Update deduplication log CSV
+        log_entry = {
+            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'input_file': args.input,
+            'output_file': args.output,
+            'before_count': len(documents),
+            'after_count': len(deduplicated_docs),
+            'processing_time': round(processing_time, 2),
+        }
+
+        if storage_client.file_exists(args.log_csv):
+            existing = storage_client.read_text_file(args.log_csv)
+            df = pd.read_csv(io.StringIO(existing))
+            df = pd.concat([df, pd.DataFrame([log_entry])], ignore_index=True)
+        else:
+            df = pd.DataFrame([log_entry])
+        storage_client.write_text_file(args.log_csv, df.to_csv(index=False))
+
+        logger.info(f"Deduplication log updated: {args.log_csv}")
 
     except Exception as e:
         logger.error(f"Deduplication failed: {e}", exc_info=True)
