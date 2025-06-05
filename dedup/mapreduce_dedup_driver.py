@@ -23,7 +23,7 @@ def _process_chunk(args: tuple[List[str], Dict]) -> List[Dict]:
     lines, config = args
     docs = [json.loads(line) for line in lines if line.strip()]
     lsh, minhashes = build_minhash_index(docs, config)
-    clusters = find_duplicate_clusters(lsh, minhashes)
+    clusters, _ = find_duplicate_clusters(lsh, minhashes)
     deduped, _ = deduplicate_documents(docs, clusters)
     return deduped
 
