@@ -134,9 +134,10 @@ run_phase3() {
     # Merge models
     log_message "Merging models..."
     python -m dem.merge_model \
-        --config "$DEM_CONFIG" \
-        --diff-vectors-dir "models/diff_vectors" \
+        --base-model "models/base/pytorch_model.bin" \
         --output-dir "models/merged" \
+        --diff "models/diff_vectors/domain1.pt:1.0" \
+        --diff "models/diff_vectors/domain2.pt:1.0" \
         2>> "$ERROR_LOG"
 
     validate_phase "3" "models/merged/pytorch_model.bin"
@@ -150,13 +151,16 @@ run_phase4() {
     python -m evaluation.eval_runner \
         --base-model "models/base/" \
         --merged-model "models/merged/" \
-        --eval-prompts "evaluation/eval_prompts.jsonl" \
-        --output-dir "results/" \
+        --prompts "evaluation/eval_prompts.jsonl" \
+        --output "results/evaluation_metrics.json" \
+        --md-output "eval/eval_prompt_comparison.md" \
+        --output "results/metrics.json" \
         2>> "$ERROR_LOG"
 
-    # Compute metrics
+    # Compute metrics from prediction and reference files
     python -m evaluation.compute_metrics \
-        --results-dir "results/" \
+        --predictions "results/merged_outputs.txt" \
+        --references "results/references.txt" \
         --output "results/metric_summary.csv" \
         2>> "$ERROR_LOG"
 

@@ -2,13 +2,14 @@
 
 from unittest.mock import MagicMock, patch
 from pathlib import Path
+import subprocess
 import pytest
 
 pytest.importorskip("bert_score")
 pytest.importorskip("rouge_score")
 pytest.importorskip("sacrebleu")
 
-from evaluation.eval_runner import run_evaluation
+from evaluation.eval_runner import run_evaluation, save_prompt_comparison
 from evaluation.compute_metrics import compute_metrics
 
 
@@ -92,3 +93,42 @@ def test_run_evaluation_no_reference_uses_base_outputs() -> None:
 
     metric_mock.assert_called_once_with(["base"], ["merged"])
 
+
+def test_save_prompt_comparison_writes_file(tmp_path) -> None:
+    """``save_prompt_comparison`` should write markdown file."""
+
+    out_file = tmp_path / "cmp.md"
+    with patch("evaluation.eval_runner.load_prompts", return_value=[{"prompt": "p"}]), \
+         patch("evaluation.eval_runner.AutoModelForCausalLM", MagicMock()), \
+         patch("evaluation.eval_runner.AutoTokenizer", MagicMock()), \
+         patch("evaluation.eval_runner.generate_responses", side_effect=[["b"], ["m"]]):
+        save_prompt_comparison("base", "merged", "dummy.jsonl", str(out_file))
+
+    assert out_file.exists()
+def test_compute_metrics_cli(tmp_path) -> None:
+    """CLI entrypoint should write a CSV of metrics."""
+    pred_file = tmp_path / "pred.txt"
+    ref_file = tmp_path / "ref.txt"
+    out_csv = tmp_path / "metrics.csv"
+
+    pred_file.write_text("hello\n", encoding="utf-8")
+    ref_file.write_text("hello\n", encoding="utf-8")
+
+    subprocess.run(
+        [
+            "python",
+            "-m",
+            "evaluation.compute_metrics",
+            "--predictions",
+            str(pred_file),
+            "--references",
+            str(ref_file),
+            "--output",
+            str(out_csv),
+        ],
+        check=True,
+    )
+
+    assert out_csv.exists()
+    text = out_csv.read_text(encoding="utf-8")
+    assert "bleu" in text
