@@ -12,6 +12,7 @@ from dedup.minhash_utils import (
     tokenize_jamo_ngrams,
     create_minhash,
     jaccard_similarity,
+    estimate_jaccard_similarity,
 )
 from dedup.slimpajama_dedup import build_minhash_index
 from dedup.cluster_reduction import select_representative_document, _calculate_quality_score
@@ -65,6 +66,31 @@ class TestMinHashUtils:
         """Test Jaccard similarity with empty sets"""
         similarity = jaccard_similarity(set(), set())
         assert similarity == 1.0
+
+    def test_estimate_jaccard_similarity_digest(self):
+        """Estimate similarity using MinHash digests."""
+        ngrams = ["hello", "world"]
+        mh1 = create_minhash(ngrams, num_perm=16)
+        mh2 = create_minhash(ngrams, num_perm=16)
+
+        similarity = estimate_jaccard_similarity(mh1, mh2)
+        assert similarity >= 0.99
+
+    def test_estimate_jaccard_similarity_generic(self):
+        """Estimate similarity for objects with digest method."""
+
+        class FakeMinHash:
+            def __init__(self, values):
+                self._hashes = values
+
+            def digest(self):
+                return self._hashes
+
+        mh1 = FakeMinHash([1, 2, 3, 4])
+        mh2 = FakeMinHash([1, 2, 5, 6])
+
+        similarity = estimate_jaccard_similarity(mh1, mh2)
+        assert abs(similarity - 0.5) < 0.001
 
     def test_build_minhash_index_with_redis(self):
         """Ensure MinHash signatures stored in Redis"""

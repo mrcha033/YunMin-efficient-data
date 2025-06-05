@@ -20,6 +20,16 @@ except Exception:  # pragma: no cover - fallback for environments without datask
         def digest(self) -> list[int]:
             return self._hashes
 
+        def jaccard(self, other: "MinHash") -> float:
+            """Estimate Jaccard similarity by comparing digests."""
+            other_digest = other.digest()
+
+            if len(self._hashes) != len(other_digest):
+                raise ValueError("MinHash objects must use the same num_perm")
+
+            matches = sum(1 for a, b in zip(self._hashes, other_digest) if a == b)
+            return matches / len(self._hashes) if self._hashes else 0.0
+
 
 def tokenize_ngrams(text: str, n: int = 5) -> List[str]:
     """
@@ -124,4 +134,11 @@ def estimate_jaccard_similarity(minhash1: MinHash, minhash2: MinHash) -> float:
     Returns:
         Estimated Jaccard similarity
     """
-    return minhash1.jaccard(minhash2)
+    digest1 = minhash1.digest()
+    digest2 = minhash2.digest()
+
+    if len(digest1) != len(digest2):
+        raise ValueError("MinHash objects must have the same number of permutations")
+
+    matches = sum(1 for h1, h2 in zip(digest1, digest2) if h1 == h2)
+    return matches / len(digest1) if digest1 else 0.0
