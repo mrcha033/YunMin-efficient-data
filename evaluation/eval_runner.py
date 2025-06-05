@@ -37,6 +37,36 @@ def generate_responses(model: Any, tokenizer: Any, prompts: Iterable[str]) -> Li
     return responses
 
 
+def save_prompt_comparison(
+    base_model_path: str,
+    merged_model_path: str,
+    prompt_file: str = DEFAULT_PROMPT_FILE,
+    output_path: str = "eval/eval_prompt_comparison.md",
+) -> None:
+    """Generate outputs from two models and write a markdown comparison."""
+    entries = load_prompts(prompt_file)
+    prompts = [p["prompt"] for p in entries]
+
+    if AutoModelForCausalLM is None or AutoTokenizer is None:
+        raise ImportError("transformers is required for running evaluation")
+
+    base_tok = AutoTokenizer.from_pretrained(base_model_path)
+    base_model = AutoModelForCausalLM.from_pretrained(base_model_path)
+    merged_tok = AutoTokenizer.from_pretrained(merged_model_path)
+    merged_model = AutoModelForCausalLM.from_pretrained(merged_model_path)
+
+    base_outputs = generate_responses(base_model, base_tok, prompts)
+    merged_outputs = generate_responses(merged_model, merged_tok, prompts)
+
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", encoding="utf-8") as f:
+        f.write("| Prompt | Base | Merged |\n")
+        f.write("| --- | --- | --- |\n")
+        for p, b, m in zip(prompts, base_outputs, merged_outputs):
+            f.write(f"| {p} | {b} | {m} |\n")
+
+
 def run_evaluation(
     base_model_path: str,
     merged_model_path: str,
@@ -83,6 +113,9 @@ if __name__ == "__main__":
     parser.add_argument("--merged-model", required=True, help="Path to merged model")
     parser.add_argument("--prompts", default=DEFAULT_PROMPT_FILE, help="Path to evaluation prompts JSONL file")
     parser.add_argument("--output", default="evaluation_metrics.json", help="File to save metric results as JSON")
+    parser.add_argument("--md-output", help="Markdown file to write prompt comparison")
     args = parser.parse_args()
 
     run_evaluation(args.base_model, args.merged_model, args.prompts, args.output)
+    if args.md_output:
+        save_prompt_comparison(args.base_model, args.merged_model, args.prompts, args.md_output)
