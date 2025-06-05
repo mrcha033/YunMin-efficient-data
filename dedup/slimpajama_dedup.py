@@ -14,6 +14,11 @@ from typing import Dict, List, Set, Tuple
 import argparse
 
 try:
+    import pandas as pd
+except Exception:  # pragma: no cover - optional dependency
+    pd = None
+
+try:
     from datasketch import MinHash, MinHashLSH
 except Exception:  # pragma: no cover - fallback for environments without datasketch
     class MinHash:
@@ -449,15 +454,17 @@ def main():
             'processing_time': round(processing_time, 2),
         }
 
-        if storage_client.file_exists(args.log_csv):
-            existing = storage_client.read_text_file(args.log_csv)
-            df = pd.read_csv(io.StringIO(existing))
-            df = pd.concat([df, pd.DataFrame([log_entry])], ignore_index=True)
+        if pd is None:
+            logger.warning("pandas is not available; skipping CSV log update")
         else:
-            df = pd.DataFrame([log_entry])
-        storage_client.write_text_file(args.log_csv, df.to_csv(index=False))
-
-        logger.info(f"Deduplication log updated: {args.log_csv}")
+            if storage_client.file_exists(args.log_csv):
+                existing = storage_client.read_text_file(args.log_csv)
+                df = pd.read_csv(io.StringIO(existing))
+                df = pd.concat([df, pd.DataFrame([log_entry])], ignore_index=True)
+            else:
+                df = pd.DataFrame([log_entry])
+            storage_client.write_text_file(args.log_csv, df.to_csv(index=False))
+            logger.info(f"Deduplication log updated: {args.log_csv}")
 
     except Exception as e:
         logger.error(f"Deduplication failed: {e}", exc_info=True)
