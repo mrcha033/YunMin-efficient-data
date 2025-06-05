@@ -170,15 +170,17 @@ domain_weights:
 
 ## 🧪 테스트
 
+테스트 실행 시에는 저장소 루트를 `PYTHONPATH`에 추가해야 합니다.
+
 ```bash
 # 단위 테스트 실행
-pytest tests/
+PYTHONPATH=. pytest
 
 # 특정 모듈 테스트
-pytest tests/test_dedup.py
+PYTHONPATH=. pytest tests/test_dedup.py
 
 # 커버리지 포함 테스트
-pytest --cov=. tests/
+PYTHONPATH=. pytest --cov=.
 ```
 
 ## 📖 상세 문서
@@ -186,7 +188,11 @@ pytest --cov=. tests/
 - [📦 전체 아키텍처](docs/architecture.md)
 - [☁️ 클라우드 스토리지 가이드](docs/cloud-storage.md)
 - [✅ 세부 태스크 목록](docs/tasks.md)
-- [🧹 Phase 1-4 구현 가이드](docs/phase1-4.md)
+- [🧹 Phase 1 상세 계획](docs/phase1.md)
+- [📦 Phase 2 상세 계획](docs/phase2.md)
+- [⚙️ Phase 3 상세 계획](docs/phase3.md)
+- [🔬 Phase 4 상세 계획](docs/phase4.md)
+- [📊 최종 보고서](docs/report.md)
 - [🤖 에이전트 시스템](docs/AGENTS.md)
 
 ## 🔧 고급 사용법
