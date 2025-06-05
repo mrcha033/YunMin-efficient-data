@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 from pathlib import Path
+import subprocess
 import pytest
 
 pytest.importorskip("bert_score")
@@ -104,4 +105,30 @@ def test_save_prompt_comparison_writes_file(tmp_path) -> None:
         save_prompt_comparison("base", "merged", "dummy.jsonl", str(out_file))
 
     assert out_file.exists()
+def test_compute_metrics_cli(tmp_path) -> None:
+    """CLI entrypoint should write a CSV of metrics."""
+    pred_file = tmp_path / "pred.txt"
+    ref_file = tmp_path / "ref.txt"
+    out_csv = tmp_path / "metrics.csv"
 
+    pred_file.write_text("hello\n", encoding="utf-8")
+    ref_file.write_text("hello\n", encoding="utf-8")
+
+    subprocess.run(
+        [
+            "python",
+            "-m",
+            "evaluation.compute_metrics",
+            "--predictions",
+            str(pred_file),
+            "--references",
+            str(ref_file),
+            "--output",
+            str(out_csv),
+        ],
+        check=True,
+    )
+
+    assert out_csv.exists()
+    text = out_csv.read_text(encoding="utf-8")
+    assert "bleu" in text

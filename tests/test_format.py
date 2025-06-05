@@ -26,3 +26,9 @@ def test_convert_jsonl_to_parquet(tmp_path) -> None:
     convert_jsonl_to_parquet(str(sample), str(out), config, batch_size=1, compression="brotli")
     table = pq.read_table(out)
     assert table.num_rows == 2
+
+    schema_path = out.with_name("schema.txt")
+    assert schema_path.exists()
+    expected = create_schema(config["schema"])
+    lines = [l.strip() for l in schema_path.read_text().splitlines() if l.strip()]
+    assert lines == [f"{f.name}:{f.type}" for f in expected]

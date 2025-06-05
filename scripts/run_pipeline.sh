@@ -154,11 +154,13 @@ run_phase4() {
         --prompts "evaluation/eval_prompts.jsonl" \
         --output "results/evaluation_metrics.json" \
         --md-output "eval/eval_prompt_comparison.md" \
+        --output "results/metrics.json" \
         2>> "$ERROR_LOG"
 
-    # Compute metrics
+    # Compute metrics from prediction and reference files
     python -m evaluation.compute_metrics \
-        --results-dir "results/" \
+        --predictions "results/merged_outputs.txt" \
+        --references "results/references.txt" \
         --output "results/metric_summary.csv" \
         2>> "$ERROR_LOG"
 

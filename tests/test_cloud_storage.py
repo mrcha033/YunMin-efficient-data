@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch, MagicMock
 
 
 from utils.cloud_storage import CloudStorageManager, get_storage_client
-from utils.data_utils import validate_jsonl_format
+from utils.data_utils import validate_jsonl_format, validate_json
 
 
 class TestCloudStorageManager(unittest.TestCase):
@@ -189,6 +189,17 @@ class TestDataUtils(unittest.TestCase):
         self.assertEqual(info['valid_lines'], 2)
         self.assertEqual(info['invalid_lines'], 1)
         self.assertGreater(len(info['validation_errors']), 0)
+
+    def test_validate_json(self):
+        """Validate a single JSON object"""
+        doc = {"text": "sample", "source": "test"}
+        is_valid, err = validate_json(doc, ["text", "source"])
+        self.assertTrue(is_valid)
+        self.assertEqual(err, "")
+
+        invalid_doc = {"text": ""}
+        is_valid, err = validate_json(invalid_doc, ["text", "source"])
+        self.assertFalse(is_valid)
 
 
 class TestGetStorageClient(unittest.TestCase):
