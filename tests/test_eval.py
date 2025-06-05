@@ -1,6 +1,7 @@
 """Tests for evaluation runner and metrics computation."""
 
 from unittest.mock import MagicMock, patch
+from pathlib import Path
 import pytest
 
 pytest.importorskip("bert_score")
@@ -11,20 +12,21 @@ from evaluation.eval_runner import run_evaluation
 from evaluation.compute_metrics import compute_metrics
 
 
-def test_run_evaluation_computes_metrics() -> None:
+def test_run_evaluation_computes_metrics(tmp_path) -> None:
     """Run evaluation with mocked models and verify metric calculation."""
     prompts = [{"prompt": "Hi", "reference": "Hello"}]
+    out_file = tmp_path / "metrics.json"
 
     with patch("evaluation.eval_runner.load_prompts", return_value=prompts), \
          patch("evaluation.eval_runner.AutoModelForCausalLM", MagicMock()), \
          patch("evaluation.eval_runner.AutoTokenizer", MagicMock()), \
          patch("evaluation.eval_runner.generate_responses", side_effect=[["base"], ["merged"]]), \
          patch("evaluation.eval_runner.compute_metrics", return_value={"score": 1.0}) as metric_mock:
-        metrics = run_evaluation("base", "merged", "dummy.jsonl")
+        metrics = run_evaluation("base", "merged", "dummy.jsonl", str(out_file))
 
     assert metrics == {"score": 1.0}
     metric_mock.assert_called_once_with(["Hello"], ["merged"])
-
+    assert out_file.exists()
 
 def test_evaluation_functions_exist() -> None:
     """Check that evaluation functions are callable."""
@@ -66,6 +68,11 @@ def test_run_evaluation_smoke(monkeypatch) -> None:
         return {"bleu": 1.0}
 
     monkeypatch.setattr("evaluation.eval_runner.compute_metrics", fake_compute_metrics)
+    with patch("evaluation.eval_runner.load_prompts", return_value=[{"prompt": "t"}]), \
+         patch("evaluation.eval_runner.AutoModelForCausalLM", MagicMock()), \
+         patch("evaluation.eval_runner.AutoTokenizer", MagicMock()), \
+         patch("evaluation.eval_runner.generate_responses", side_effect=[["base"], ["merged"]]):
+        run_evaluation("base", "merged")
 
     run_evaluation("base", "merged", "dummy.jsonl")
 

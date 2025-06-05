@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from typing import Any, Dict, Iterable, List
+from pathlib import Path
 
 from evaluation.compute_metrics import compute_metrics
 
@@ -39,6 +40,7 @@ def run_evaluation(
     base_model_path: str,
     merged_model_path: str,
     prompt_file: str = DEFAULT_PROMPT_FILE,
+    output_path: str | None = None,
 ) -> Dict[str, float]:
     """Run evaluation comparing base and merged models."""
     prompt_entries = load_prompts(prompt_file)
@@ -61,6 +63,13 @@ def run_evaluation(
     refs = references if any(references) else base_outputs
 
     metrics = compute_metrics(refs, merged_outputs)
+
+    out_file = Path(output_path) if output_path else None
+    if out_file is not None:
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        with out_file.open("w", encoding="utf-8") as f:
+            json.dump(metrics, f, ensure_ascii=False, indent=2)
+
     print(metrics)
     return metrics
 
@@ -70,6 +79,7 @@ if __name__ == "__main__":
     parser.add_argument("--base-model", required=True, help="Path to base model")
     parser.add_argument("--merged-model", required=True, help="Path to merged model")
     parser.add_argument("--prompts", default=DEFAULT_PROMPT_FILE, help="Path to evaluation prompts JSONL file")
+    parser.add_argument("--output", default="evaluation_metrics.json", help="File to save metric results as JSON")
     args = parser.parse_args()
 
-    run_evaluation(args.base_model, args.merged_model, args.prompts)
+    run_evaluation(args.base_model, args.merged_model, args.prompts, args.output)
