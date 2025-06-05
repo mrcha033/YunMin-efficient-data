@@ -19,6 +19,7 @@ from tqdm import tqdm
 import yaml
 
 from .parquet_utils import create_schema, validate_parquet_file
+from utils.cloud_storage import get_storage_client
 
 
 def setup_logging():
@@ -40,12 +41,13 @@ def load_config(config_path: str) -> Dict:
         return yaml.safe_load(f)
 
 
-def load_jsonl_batch(file_path: str, batch_size: int = 1000, start_line: int = 0) -> List[Dict]:
+def load_jsonl_batch_from_cloud(storage_client, file_path: str, batch_size: int = 1000, start_line: int = 0) -> List[Dict]:
     """
-    Load a batch of documents from JSONL file
+    Load a batch of documents from JSONL file in cloud storage
     
     Args:
-        file_path: Path to JSONL file
+        storage_client: Cloud storage client
+        file_path: Path to JSONL file in cloud storage
         batch_size: Number of documents to load
         start_line: Starting line number
         
@@ -53,25 +55,19 @@ def load_jsonl_batch(file_path: str, batch_size: int = 1000, start_line: int = 0
         List of document dictionaries
     """
     documents = []
+    current_line = 0
     
-    with open(file_path, 'r', encoding='utf-8') as f:
-        # Skip to start line
-        for _ in range(start_line):
-            f.readline()
-        
-        # Read batch
-        for _ in range(batch_size):
-            line = f.readline()
-            if not line:
-                break
-                
-            line = line.strip()
-            if line:
-                try:
-                    doc = json.loads(line)
-                    documents.append(doc)
-                except json.JSONDecodeError:
-                    continue
+    # Read all documents and skip to start line
+    for doc in storage_client.read_jsonl_file(file_path):
+        if current_line < start_line:
+            current_line += 1
+            continue
+            
+        if len(documents) >= batch_size:
+            break
+            
+        documents.append(doc)
+        current_line += 1
     
     return documents
 

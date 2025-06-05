@@ -46,11 +46,13 @@ merging:
     test_prompts: 10
     check_convergence: true
 
-# Output Paths
+# Output Paths (Cloud Storage)
 output_paths:
   lora_adapters: "s3://yunmin-data/models/lora/"
   diff_vectors: "s3://yunmin-data/models/diff_vectors/"
   merged_model: "s3://yunmin-data/models/merged/"
+  logs: "s3://yunmin-data/logs/"
+  checkpoints: "s3://yunmin-data/checkpoints/"
   
 # Evaluation Settings
 evaluation:

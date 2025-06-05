@@ -9,24 +9,31 @@ YunMin-EfficientData는 한국어 특화 LLM인 YunMin-Mamba의 학습 효율성
 - **🧹 SlimPajama 기반 중복 제거**: MinHash + LSH를 활용한 고효율 중복 제거 (3% 이하 중복률 유지)
 - **📦 Youmu 기반 포맷 최적화**: Parquet 컬럼형 저장으로 최대 5배 로딩 속도 향상
 - **🔗 DEM 기반 모델 병합**: 도메인별 LoRA 학습 후 차이 벡터 병합으로 70-90% 학습 비용 절감
+- **☁️ 클라우드 네이티브**: AWS S3, Google Cloud Storage, Azure Blob Storage 통합 지원
 - **⚡ 완전 자동화**: 원클릭 파이프라인 실행 및 상세한 로깅/모니터링
 
 ## 🏗️ 프로젝트 구조
 
 ```
 YunMin-efficient-data/
-├── data/                    # 데이터 저장소
-│   ├── raw/                # 원본 JSONL 데이터
-│   ├── deduped/            # 중복 제거 완료 데이터
-│   └── parquet/            # Parquet 변환 결과
-├── dedup/                  # Phase 1: 중복 제거 모듈
-├── format/                 # Phase 2: 포맷 변환 모듈
+├── data/                    # 로컬 캐시 및 임시 데이터
+│   └── cache/              # 클라우드 스토리지 캐시
+├── dedup/                  # Phase 1: 중복 제거 모듈 (클라우드 네이티브)
+├── format/                 # Phase 2: 포맷 변환 모듈 (클라우드 네이티브)
 ├── dem/                    # Phase 3: DEM 학습 및 병합
 ├── evaluation/             # Phase 4: 성능 평가
+├── utils/                  # 클라우드 스토리지 & 공통 유틸리티
 ├── scripts/                # 자동화 스크립트
 ├── configs/                # 설정 파일
 ├── tests/                  # 단위 테스트
 └── docs/                   # 상세 문서
+
+클라우드 스토리지 구조:
+├── raw/                    # 원본 JSONL 데이터
+├── deduped/               # 중복 제거 완료 데이터
+├── parquet/               # Parquet 변환 결과
+├── models/                # 학습된 모델 및 체크포인트
+└── logs/                  # 파이프라인 실행 로그
 ```
 
 ## 🚀 빠른 시작
@@ -47,26 +54,48 @@ source venv/bin/activate  # Linux/Mac
 # 또는 venv\Scripts\activate  # Windows
 ```
 
-### 2. 데이터 준비
+### 2. 클라우드 스토리지 설정
+
+자동 설정 스크립트 사용:
 
 ```bash
-# 원본 JSONL 데이터를 data/raw/ 디렉토리에 배치
-# 각 줄은 다음 형식의 JSON이어야 합니다:
-# {"text": "텍스트 내용", "source": "출처", "domain": "도메인", "lang": "ko"}
+# Linux/macOS
+./scripts/setup_cloud.sh
+
+# Windows PowerShell
+.\scripts\setup_cloud.ps1
+```
+
+수동 설정:
+
+```bash
+# AWS S3 설정
+export AWS_ACCESS_KEY_ID=your_access_key
+export AWS_SECRET_ACCESS_KEY=your_secret_key
+export AWS_DEFAULT_REGION=ap-northeast-2
+
+# Google Cloud Storage 설정 (대안)
+export GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
+
+# Azure Blob Storage 설정 (대안)
+export AZURE_STORAGE_CONNECTION_STRING=your_connection_string
+
+# 원본 JSONL 데이터를 클라우드 스토리지에 업로드
+# 형식: {"text": "텍스트 내용", "source": "출처", "domain": "도메인", "lang": "ko"}
 ```
 
 ### 3. 파이프라인 실행
 
 ```bash
-# 전체 파이프라인 실행
-./scripts/run_pipeline.sh data/raw/your_dataset.jsonl
+# 전체 파이프라인 실행 (클라우드 경로 사용)
+./scripts/run_pipeline.sh s3://yunmin-data/raw/your_dataset.jsonl
 
 # 특정 단계만 실행
-./scripts/run_pipeline.sh --phase1-only data/raw/dataset.jsonl  # 중복 제거만
-./scripts/run_pipeline.sh --phase2-only data/deduped/dataset.jsonl  # 포맷 변환만
+./scripts/run_pipeline.sh --phase1-only s3://yunmin-data/raw/dataset.jsonl  # 중복 제거만
+./scripts/run_pipeline.sh --phase2-only s3://yunmin-data/deduped/dataset.jsonl  # 포맷 변환만
 
 # 특정 단계 건너뛰기
-./scripts/run_pipeline.sh --skip-phase4 data/raw/dataset.jsonl  # 평가 단계 제외
+./scripts/run_pipeline.sh --skip-phase4 s3://yunmin-data/raw/dataset.jsonl  # 평가 단계 제외
 ```
 
 ## 📋 4단계 파이프라인
@@ -155,11 +184,10 @@ pytest --cov=. tests/
 ## 📖 상세 문서
 
 - [📦 전체 아키텍처](docs/architecture.md)
-- [🧹 Phase 1: 중복 제거 상세 계획](docs/phase1.md)
-- [📦 Phase 2: 포맷 변환 상세 계획](docs/phase2.md)
-- [🔗 Phase 3: DEM 학습 상세 계획](docs/phase3.md)
-- [📊 Phase 4: 평가 상세 계획](docs/phase4.md)
+- [☁️ 클라우드 스토리지 가이드](docs/cloud-storage.md)
 - [✅ 세부 태스크 목록](docs/tasks.md)
+- [🧹 Phase 1-4 구현 가이드](docs/phase1-4.md)
+- [🤖 에이전트 시스템](docs/AGENTS.md)
 
 ## 🔧 고급 사용법
 

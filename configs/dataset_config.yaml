@@ -2,16 +2,30 @@
 
 # Cloud Storage Settings
 storage:
-  provider: "s3"  # Options: s3, gcs, local
+  provider: "s3"  # Options: s3, gcs, azure
   bucket: "yunmin-data"
   region: "ap-northeast-2"
+  
+  # AWS S3 Configuration
+  access_key: null  # Set via environment variable AWS_ACCESS_KEY_ID
+  secret_key: null  # Set via environment variable AWS_SECRET_ACCESS_KEY
+  
+  # GCS Configuration (alternative)
+  # credentials_path: "path/to/service-account.json"  # Set via GOOGLE_APPLICATION_CREDENTIALS
+  
+  # Azure Configuration (alternative)
+  # connection_string: null  # Set via AZURE_STORAGE_CONNECTION_STRING
+  # account_url: null  # Set via AZURE_STORAGE_ACCOUNT_URL
 
-# Data Paths
+# Data Paths (Cloud Storage)
 paths:
   raw_data: "s3://yunmin-data/raw/"
   dedup_ready: "s3://yunmin-data/dedup_ready/"
   deduped: "s3://yunmin-data/deduped/"
   parquet: "s3://yunmin-data/parquet/"
+  
+  # Local cache directory for temporary files
+  local_cache: "./cache/"
 
 # Dataset Schema
 schema:

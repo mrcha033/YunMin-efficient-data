@@ -20,8 +20,11 @@
 
 ```
 YunMin-efficient-data/
-├── data/                      # 데이터 저장 (raw, 중복 제거, parquet)
-│   ├── raw/                  # 원본 JSONL 데이터 (from S3 or local)
+├── data/                      # 로컬 캐시 및 임시 데이터
+│   └── cache/                # 클라우드 스토리지 캐시 파일
+│
+├── cloud_data/               # 클라우드 스토리지 구조 (S3/GCS/Azure)
+│   ├── raw/                  # 원본 JSONL 데이터
 │   ├── dedup_ready/          # 정제된 JSONL 파일
 │   ├── deduped/              # 중복 제거 완료 파일
 │   └── parquet/              # 열 기반 Parquet 포맷 변환 결과
@@ -32,15 +35,19 @@ YunMin-efficient-data/
 │   └── merged/               # DEM 병합 결과 모델
 │
 ├── dedup/                    # SlimPajama 기반 중복 제거 모듈
-│   ├── slimpajama_dedup.py  # 메인 중복 제거 스크립트
+│   ├── slimpajama_dedup.py  # 메인 중복 제거 스크립트 (클라우드 지원)
 │   ├── minhash_utils.py     # MinHash + LSH 처리 모듈
 │   ├── cluster_reduction.py # 대표 문서 선택 로직
 │   └── stats_analysis.ipynb # 중복률 시각화 및 통계 분석
 │
 ├── format/                   # Youmu 포맷 변환 (JSONL → Parquet)
-│   ├── to_parquet.py        # 변환 메인 스크립트
+│   ├── to_parquet.py        # 변환 메인 스크립트 (클라우드 지원)
 │   ├── parquet_utils.py     # schema 지정 및 열 필터링 유틸
 │   └── parquet_profile.ipynb # 포맷별 속도/용량 분석 notebook
+│
+├── utils/                    # 클라우드 스토리지 및 공통 유틸리티
+│   ├── cloud_storage.py     # 통합 클라우드 스토리지 매니저
+│   └── data_utils.py        # 데이터 검증 및 처리 유틸리티
 │
 ├── dem/                      # Data Efficiency Method 학습 및 병합
 │   ├── train_individual.py  # 도메인별 LoRA 미세조정 스크립트

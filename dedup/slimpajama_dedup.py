@@ -19,6 +19,8 @@ import yaml
 
 from .minhash_utils import create_minhash, tokenize_ngrams
 from .cluster_reduction import select_representative_document
+from utils.cloud_storage import get_storage_client
+from utils.data_utils import validate_jsonl_format
 
 
 def setup_logging():
@@ -40,12 +42,13 @@ def load_config(config_path: str) -> Dict:
         return yaml.safe_load(f)
 
 
-def validate_jsonl_file(file_path: str, sample_size: int = 100) -> Tuple[bool, int, List[str]]:
+def validate_cloud_jsonl_file(storage_client, file_path: str, sample_size: int = 100) -> Tuple[bool, int, List[str]]:
     """
-    Validate JSONL file format and return sample documents
+    Validate JSONL file format from cloud storage and return sample documents
     
     Args:
-        file_path: Path to JSONL file
+        storage_client: Cloud storage client
+        file_path: Path to JSONL file in cloud storage
         sample_size: Number of samples to return for inspection
         
     Returns:
@@ -54,36 +57,22 @@ def validate_jsonl_file(file_path: str, sample_size: int = 100) -> Tuple[bool, i
     logger = logging.getLogger(__name__)
     
     try:
-        total_lines = 0
-        samples = []
-        invalid_lines = 0
+        # Read file content from cloud storage
+        file_content = storage_client.read_text_file(file_path)
         
-        with open(file_path, 'r', encoding='utf-8') as f:
-            for line_num, line in enumerate(f, 1):
-                line = line.strip()
-                if not line:
-                    continue
-                    
-                try:
-                    doc = json.loads(line)
-                    total_lines += 1
-                    
-                    # Collect samples
-                    if len(samples) < sample_size:
-                        samples.append(doc.get('text', ''))
-                        
-                except json.JSONDecodeError:
-                    invalid_lines += 1
-                    if invalid_lines < 10:  # Log first 10 errors
-                        logger.warning(f"Invalid JSON at line {line_num}: {line[:100]}...")
+        # Validate using the utility function
+        is_valid, validation_info = validate_jsonl_format(file_content, sample_size)
         
-        is_valid = invalid_lines / max(total_lines, 1) < 0.01  # Less than 1% invalid
-        logger.info(f"File {file_path}: {total_lines} valid lines, {invalid_lines} invalid lines")
+        # Extract samples for compatibility
+        samples = [doc.get('text', '') for doc in validation_info['sample_documents']]
         
-        return is_valid, total_lines, samples
+        logger.info(f"Cloud file {file_path}: {validation_info['valid_lines']} valid lines, "
+                   f"{validation_info['invalid_lines']} invalid lines")
+        
+        return is_valid, validation_info['valid_lines'], samples
         
     except Exception as e:
-        logger.error(f"Error validating file {file_path}: {e}")
+        logger.error(f"Error validating cloud file {file_path}: {e}")
         return False, 0, []
 
 
@@ -252,10 +241,10 @@ def deduplicate_documents(documents: List[Dict], duplicate_clusters: List[Set[st
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SlimPajama-based deduplication")
+    parser = argparse.ArgumentParser(description="SlimPajama-based deduplication with cloud storage support")
     parser.add_argument("--config", default="configs/dataset_config.yaml", help="Configuration file")
-    parser.add_argument("--input", required=True, help="Input JSONL file path")
-    parser.add_argument("--output", required=True, help="Output JSONL file path")
+    parser.add_argument("--input", required=True, help="Input JSONL file path (cloud storage path)")
+    parser.add_argument("--output", required=True, help="Output JSONL file path (cloud storage path)")
     parser.add_argument("--log-file", help="Additional log file for this run")
     
     args = parser.parse_args()
@@ -272,30 +261,27 @@ def main():
         config = load_config(args.config)
         logger.info(f"Loaded configuration from {args.config}")
         
+        # Initialize cloud storage client
+        storage_client = get_storage_client(config)
+        logger.info(f"Initialized {storage_client.provider} storage client")
+        
         # Validate input file
-        logger.info(f"Validating input file: {args.input}")
-        is_valid, total_lines, samples = validate_jsonl_file(args.input)
+        logger.info(f"Validating cloud input file: {args.input}")
+        is_valid, total_lines, samples = validate_cloud_jsonl_file(storage_client, args.input)
         
         if not is_valid:
-            logger.error("Input file validation failed")
+            logger.error("Cloud input file validation failed")
             return
         
-        logger.info(f"Input file is valid with {total_lines} documents")
+        logger.info(f"Cloud input file is valid with {total_lines} documents")
         
-        # Load documents
-        logger.info("Loading documents...")
+        # Load documents from cloud storage
+        logger.info("Loading documents from cloud storage...")
         documents = []
-        with open(args.input, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    try:
-                        doc = json.loads(line)
-                        documents.append(doc)
-                    except json.JSONDecodeError:
-                        continue
+        for doc in storage_client.read_jsonl_file(args.input):
+            documents.append(doc)
         
-        logger.info(f"Loaded {len(documents)} documents")
+        logger.info(f"Loaded {len(documents)} documents from cloud storage")
         
         # Build MinHash index
         lsh, minhashes = build_minhash_index(documents, config)
@@ -306,24 +292,28 @@ def main():
         # Deduplicate
         deduplicated_docs, stats = deduplicate_documents(documents, duplicate_clusters)
         
-        # Save results
-        os.makedirs(os.path.dirname(args.output), exist_ok=True)
+        # Save results to cloud storage
+        logger.info(f"Saving deduplicated results to cloud storage: {args.output}")
         
-        with open(args.output, 'w', encoding='utf-8') as f:
-            for doc in deduplicated_docs:
-                f.write(json.dumps(doc, ensure_ascii=False) + '\n')
+        # Create JSONL content
+        jsonl_content = '\n'.join(json.dumps(doc, ensure_ascii=False) for doc in deduplicated_docs)
+        
+        # Upload to cloud storage
+        success = storage_client.write_text_file(args.output, jsonl_content)
+        if not success:
+            raise Exception("Failed to save results to cloud storage")
         
         # Save statistics
-        stats_file = args.output.replace('.jsonl', '_stats.json')
-        with open(stats_file, 'w', encoding='utf-8') as f:
-            json.dump(stats, f, indent=2, ensure_ascii=False)
+        stats_path = args.output.replace('.jsonl', '_stats.json')
+        stats_content = json.dumps(stats, indent=2, ensure_ascii=False)
+        storage_client.write_text_file(stats_path, stats_content)
         
         end_time = time.time()
         processing_time = end_time - start_time
         
         logger.info(f"Deduplication completed in {processing_time:.2f} seconds")
-        logger.info(f"Results saved to: {args.output}")
-        logger.info(f"Statistics saved to: {stats_file}")
+        logger.info(f"Results saved to cloud storage: {args.output}")
+        logger.info(f"Statistics saved to cloud storage: {stats_path}")
         
     except Exception as e:
         logger.error(f"Deduplication failed: {e}", exc_info=True)

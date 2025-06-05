@@ -18,7 +18,7 @@ DEM_CONFIG="$CONFIG_DIR/dem_config.yaml"
 LOGGING_CONFIG="$CONFIG_DIR/logging.yaml"
 
 # Create necessary directories
-mkdir -p "$LOG_DIR" "$DATA_DIR/raw" "$DATA_DIR/dedup_ready" "$DATA_DIR/deduped" "$DATA_DIR/parquet"
+mkdir -p "$LOG_DIR" "$DATA_DIR/cache"
 
 # Logging setup
 PIPELINE_LOG="$LOG_DIR/pipeline_run.log"
