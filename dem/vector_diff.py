@@ -1,10 +1,20 @@
-"""Utilities for computing model difference vectors."""
+"""Utilities for computing parameter difference vectors."""
 
-from typing import Any
+from __future__ import annotations
+
+from typing import Dict
+
+import torch
 
 
-def compute_vector_diff(base_model: Any, fine_tuned_model: Any) -> Any:
-    """Compute the vector difference between two models."""
-    # TODO: implement diff computation
-    del base_model, fine_tuned_model
-    return None
+def compute_vector_diff(
+    base_model: Dict[str, torch.Tensor],
+    fine_tuned_model: Dict[str, torch.Tensor],
+) -> Dict[str, torch.Tensor]:
+    """Return ``fine_tuned_model`` parameters minus ``base_model`` parameters."""
+
+    diff: Dict[str, torch.Tensor] = {}
+    for name, base_param in base_model.items():
+        tuned_param = fine_tuned_model[name]
+        diff[name] = tuned_param - base_param
+    return diff

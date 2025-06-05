@@ -1,3 +1,4 @@
+import torch
 """Tests for the DEM (Data Efficiency Method) module."""
 
 from dem.train_individual import train_individual_domain
@@ -12,6 +13,24 @@ def test_dem_functions_exist() -> None:
     assert callable(merge_models)
 
 
+def test_training_diff_and_merge() -> None:
+    """Run a tiny end-to-end cycle on toy tensors."""
+
+    x = torch.eye(2)
+    y = 2 * torch.eye(2)
+
+    lora = train_individual_domain(x, y, epochs=300, lr=0.2)
+    assert "lora_weight" in lora
+
+    base = {"lora_weight": torch.zeros_like(lora["lora_weight"])}
+
+    diff = compute_vector_diff(base, lora)
+    for param in diff.values():
+        assert not torch.all(param == 0)
+
+    merged = merge_models(base, [(diff, 1.0)])
+    assert torch.allclose(merged["lora_weight"], lora["lora_weight"], atol=1e-2)
+    
 def test_compute_vector_diff_basic() -> None:
     """Verify simple difference calculation between two models."""
     base = {"w1": 1.0, "w2": 2.0}
@@ -20,7 +39,6 @@ def test_compute_vector_diff_basic() -> None:
     diff = compute_vector_diff(base, tuned)
 
     assert diff == {"w1": 0.5, "w2": 1.0}
-
 
 def test_merge_models_additive() -> None:
     """Ensure model merging adds diff vectors to the base model."""
