@@ -1,7 +1,18 @@
-"""
-Cloud Storage Manager for YunMin-EfficientData
+"""Cloud Storage Manager for YunMin-EfficientData.
 
-Supports AWS S3, Google Cloud Storage, and Azure Blob Storage
+This module provides a unified interface to AWS S3, Google Cloud Storage and
+Azure Blob Storage. When executed directly it exposes a small command line
+interface to list or upload files.
+
+Example
+-------
+List files in an S3 bucket::
+
+    python -m utils.cloud_storage s3 --list my-bucket data/
+
+Upload a file::
+
+    python -m utils.cloud_storage s3 --upload local.txt s3://my-bucket/local.txt
 """
 
 import os
@@ -603,3 +614,65 @@ def get_storage_client(config: Dict) -> CloudStorageManager:
         raise ValueError(f"Unsupported storage provider: {provider}")
 
     return CloudStorageManager(provider, **storage_config)
+
+
+def _parse_cli_config(config_path: str) -> Dict[str, Any]:
+    """Load JSON or YAML configuration for CLI usage."""
+    if not config_path:
+        return {}
+    try:
+        with open(config_path, "r", encoding="utf-8") as fh:
+            if config_path.endswith((".yml", ".yaml")):
+                import yaml
+
+                return yaml.safe_load(fh) or {}
+            return json.load(fh)
+    except Exception as exc:  # pragma: no cover - simple CLI helper
+        print(f"Failed to load config {config_path}: {exc}")
+        return {}
+
+
+if __name__ == "__main__":  # pragma: no cover - CLI entry point
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Simple CLI for CloudStorageManager"
+    )
+    parser.add_argument(
+        "provider",
+        choices=["s3", "gcs", "azure"],
+        help="Cloud provider",
+    )
+    parser.add_argument(
+        "--config",
+        help="Optional JSON/YAML config with credentials",
+    )
+    sub = parser.add_mutually_exclusive_group(required=True)
+    sub.add_argument(
+        "--list",
+        nargs=2,
+        metavar=("BUCKET", "PREFIX"),
+        help="List files under prefix",
+    )
+    sub.add_argument(
+        "--upload",
+        nargs=2,
+        metavar=("LOCAL", "DEST"),
+        help="Upload a local file to cloud path",
+    )
+
+    args = parser.parse_args()
+
+    cfg = _parse_cli_config(args.config) if args.config else {}
+    manager = CloudStorageManager(args.provider, **cfg)
+
+    if args.list:
+        bucket, prefix = args.list
+        files = manager.list_files(bucket, prefix)
+        for fpath in files:
+            print(fpath)
+    elif args.upload:
+        local, dest = args.upload
+        success = manager.upload_file(local, dest)
+        if not success:
+            raise SystemExit(1)

@@ -1,7 +1,18 @@
-"""
-Data utilities for YunMin-EfficientData
+"""Data utilities for YunMin-EfficientData.
 
-Common data validation and processing functions
+This module hosts validation helpers and convenience functions for working
+with JSONL datasets. Running ``python -m utils.data_utils`` exposes a small
+command line tool for validating JSONL files or creating simple file manifests.
+
+Example
+-------
+Validate a dataset::
+
+    python -m utils.data_utils validate data/sample.jsonl
+
+Generate a manifest::
+
+    python -m utils.data_utils manifest *.jsonl --output manifest.json
 """
 
 import json
@@ -361,3 +372,43 @@ def calculate_dataset_statistics(documents: List[Dict]) -> Dict[str, Any]:
         stats['sources'][source] = stats['sources'].get(source, 0) + 1
 
     return stats
+
+
+def _cli_validate(path: str) -> int:
+    """Validate a JSONL file from the command line."""
+    with open(path, "r", encoding="utf-8") as fh:
+        content = fh.read()
+    valid, info = validate_jsonl_format(content)
+    print(json.dumps(info, indent=2, ensure_ascii=False))
+    return 0 if valid else 1
+
+
+def _cli_manifest(files: List[str], output: Optional[str]) -> int:
+    """Create a manifest from CLI arguments."""
+    manifest = create_file_manifest(files, output)
+    print(json.dumps(manifest, indent=2, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover - CLI entry point
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Utility CLI for data files")
+    subparsers = parser.add_subparsers(dest="cmd", required=True)
+
+    v_parser = subparsers.add_parser(
+        "validate", help="Validate a JSONL file"
+    )
+    v_parser.add_argument("input", help="Path to JSONL file")
+
+    m_parser = subparsers.add_parser(
+        "manifest", help="Create a simple file manifest"
+    )
+    m_parser.add_argument("files", nargs="+", help="Files to include")
+    m_parser.add_argument("--output", help="Where to save the manifest")
+
+    args = parser.parse_args()
+
+    if args.cmd == "validate":
+        raise SystemExit(_cli_validate(args.input))
+    raise SystemExit(_cli_manifest(args.files, args.output))
