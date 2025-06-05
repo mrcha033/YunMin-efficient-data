@@ -170,15 +170,17 @@ domain_weights:
 
 ## 🧪 테스트
 
+테스트 실행 시에는 저장소 루트를 `PYTHONPATH`에 추가해야 합니다.
+
 ```bash
 # 단위 테스트 실행
-pytest tests/
+PYTHONPATH=. pytest
 
 # 특정 모듈 테스트
-pytest tests/test_dedup.py
+PYTHONPATH=. pytest tests/test_dedup.py
 
 # 커버리지 포함 테스트
-pytest --cov=. tests/
+PYTHONPATH=. pytest --cov=.
 ```
 
 ## 📖 상세 문서
