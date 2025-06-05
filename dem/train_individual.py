@@ -95,5 +95,3 @@ if __name__ == "__main__":  # pragma: no cover - manual usage
     y = 2 * torch.eye(2)
     result = train_individual_domain(x, y)
     print(result)
-
-

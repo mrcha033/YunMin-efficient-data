@@ -7,11 +7,10 @@ import argparse
 import json
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Iterable, List, Dict
+from typing import Dict, List
 
 from .slimpajama_dedup import (
     load_config,
-    preprocess_text,
     build_minhash_index,
     find_duplicate_clusters,
     deduplicate_documents,
@@ -19,8 +18,10 @@ from .slimpajama_dedup import (
 
 
 def _process_chunk(args: tuple[List[str], Dict]) -> List[Dict]:
+    """Process a single data chunk and return deduplicated documents."""
+
     lines, config = args
-    docs = [json.loads(l) for l in lines if l.strip()]
+    docs = [json.loads(line) for line in lines if line.strip()]
     lsh, minhashes = build_minhash_index(docs, config)
     clusters = find_duplicate_clusters(lsh, minhashes)
     deduped, _ = deduplicate_documents(docs, clusters)
@@ -28,14 +29,25 @@ def _process_chunk(args: tuple[List[str], Dict]) -> List[Dict]:
 
 
 def run_dedup_mapreduce(
-    input_path: str, output_path: str, config_path: str, workers: int = 2, chunk_size: int = 100
+    input_path: str,
+    output_path: str,
+    config_path: str,
+    workers: int = 2,
+    chunk_size: int = 100,
 ) -> None:
+    """Run the deduplication pipeline using a simple MapReduce approach."""
+
     config = load_config(config_path)
     lines = Path(input_path).read_text(encoding="utf-8").splitlines()
-    chunks = [lines[i : i + chunk_size] for i in range(0, len(lines), chunk_size)]
+    chunks = [
+        lines[i:i + chunk_size] for i in range(0, len(lines), chunk_size)
+    ]
 
     with Pool(processes=workers) as pool:
-        results = pool.map(_process_chunk, [(chunk, config) for chunk in chunks])
+        results = pool.map(
+            _process_chunk,
+            [(chunk, config) for chunk in chunks],
+        )
 
     deduped_docs = [doc for part in results for doc in part]
     with open(output_path, "w", encoding="utf-8") as out_f:
@@ -52,7 +64,13 @@ def main() -> None:
     parser.add_argument("--chunk-size", type=int, default=100)
     args = parser.parse_args()
 
-    run_dedup_mapreduce(args.input, args.output, args.config, args.workers, args.chunk_size)
+    run_dedup_mapreduce(
+        args.input,
+        args.output,
+        args.config,
+        args.workers,
+        args.chunk_size,
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI

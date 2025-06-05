@@ -6,7 +6,7 @@ Supports AWS S3, Google Cloud Storage, and Azure Blob Storage
 
 import os
 import logging
-from typing import Dict, List, Optional, Tuple, Any, Iterator
+from typing import Any, Dict, Iterator, List, Tuple
 from pathlib import Path
 import tempfile
 import json
@@ -76,15 +76,24 @@ class CloudStorageManager:
         """Initialize cloud storage client based on provider"""
         if self.provider == 's3':
             if not HAS_BOTO3:
-                raise ImportError("boto3 is required for S3 operations. Install with: pip install boto3")
+                raise ImportError(
+                    "boto3 is required for S3 operations."
+                    " Install with: pip install boto3"
+                )
             return self._init_s3_client()
         elif self.provider == 'gcs':
             if not HAS_GCS:
-                raise ImportError("google-cloud-storage is required for GCS operations. Install with: pip install google-cloud-storage")
+                raise ImportError(
+                    "google-cloud-storage is required for GCS operations."
+                    " Install with: pip install google-cloud-storage"
+                )
             return self._init_gcs_client()
         elif self.provider == 'azure':
             if not HAS_AZURE:
-                raise ImportError("azure-storage-blob is required for Azure operations. Install with: pip install azure-storage-blob")
+                raise ImportError(
+                    "azure-storage-blob is required for Azure operations."
+                    " Install with: pip install azure-storage-blob"
+                )
             return self._init_azure_client()
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
@@ -93,9 +102,12 @@ class CloudStorageManager:
         """Initialize S3 client"""
         try:
             session = boto3.Session(
-                aws_access_key_id=self.config.get('access_key') or os.getenv('AWS_ACCESS_KEY_ID'),
-                aws_secret_access_key=self.config.get('secret_key') or os.getenv('AWS_SECRET_ACCESS_KEY'),
-                region_name=self.config.get('region') or os.getenv('AWS_DEFAULT_REGION', 'us-east-1')
+                aws_access_key_id=self.config.get('access_key')
+                or os.getenv('AWS_ACCESS_KEY_ID'),
+                aws_secret_access_key=self.config.get('secret_key')
+                or os.getenv('AWS_SECRET_ACCESS_KEY'),
+                region_name=self.config.get('region')
+                or os.getenv('AWS_DEFAULT_REGION', 'us-east-1'),
             )
             return session.client('s3')
         except (ClientError, NoCredentialsError) as e:
@@ -105,7 +117,10 @@ class CloudStorageManager:
     def _init_gcs_client(self):
         """Initialize GCS client"""
         try:
-            credentials_path = self.config.get('credentials_path') or os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+            credentials_path = (
+                self.config.get('credentials_path')
+                or os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+            )
             if credentials_path:
                 return gcs.Client.from_service_account_json(credentials_path)
             else:
@@ -117,20 +132,36 @@ class CloudStorageManager:
     def _init_azure_client(self):
         """Initialize Azure client"""
         try:
-            connection_string = self.config.get('connection_string') or os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-            account_url = self.config.get('account_url') or os.getenv('AZURE_STORAGE_ACCOUNT_URL')
+            connection_string = (
+                self.config.get('connection_string')
+                or os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+            )
+            account_url = (
+                self.config.get('account_url')
+                or os.getenv('AZURE_STORAGE_ACCOUNT_URL')
+            )
 
             if connection_string:
-                return BlobServiceClient.from_connection_string(connection_string)
+                return BlobServiceClient.from_connection_string(
+                    connection_string
+                )
             elif account_url:
                 return BlobServiceClient(account_url=account_url)
             else:
-                raise ValueError("Either connection_string or account_url must be provided for Azure")
+                raise ValueError(
+                    "Either connection_string or "
+                    "account_url must be provided for Azure"
+                )
         except AzureError as e:
             self.logger.error(f"Failed to initialize Azure client: {e}")
             raise
 
-    def list_files(self, bucket: str, prefix: str = "", suffix: str = "") -> List[str]:
+    def list_files(
+        self,
+        bucket: str,
+        prefix: str = "",
+        suffix: str = "",
+    ) -> List[str]:
         """
         List files in cloud storage
 
@@ -149,10 +180,18 @@ class CloudStorageManager:
         elif self.provider == 'azure':
             return self._list_azure_files(bucket, prefix, suffix)
 
-    def _list_s3_files(self, bucket: str, prefix: str, suffix: str) -> List[str]:
+    def _list_s3_files(
+        self,
+        bucket: str,
+        prefix: str,
+        suffix: str,
+    ) -> List[str]:
         """List S3 files"""
         try:
-            response = self.client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+            response = self.client.list_objects_v2(
+                Bucket=bucket,
+                Prefix=prefix,
+            )
             files = []
 
             if 'Contents' in response:
@@ -166,7 +205,12 @@ class CloudStorageManager:
             self.logger.error(f"Failed to list S3 files: {e}")
             raise
 
-    def _list_gcs_files(self, bucket: str, prefix: str, suffix: str) -> List[str]:
+    def _list_gcs_files(
+        self,
+        bucket: str,
+        prefix: str,
+        suffix: str,
+    ) -> List[str]:
         """List GCS files"""
         try:
             bucket_obj = self.client.bucket(bucket)
@@ -182,7 +226,12 @@ class CloudStorageManager:
             self.logger.error(f"Failed to list GCS files: {e}")
             raise
 
-    def _list_azure_files(self, container: str, prefix: str, suffix: str) -> List[str]:
+    def _list_azure_files(
+        self,
+        container: str,
+        prefix: str,
+        suffix: str,
+    ) -> List[str]:
         """List Azure files"""
         try:
             container_client = self.client.get_container_client(container)
@@ -219,15 +268,22 @@ class CloudStorageManager:
                 blob = bucket_obj.blob(key)
                 blob.upload_from_filename(local_path)
             elif self.provider == 'azure':
-                blob_client = self.client.get_blob_client(container=bucket, blob=key)
+                blob_client = self.client.get_blob_client(
+                    container=bucket,
+                    blob=key,
+                )
                 with open(local_path, 'rb') as data:
                     blob_client.upload_blob(data, overwrite=True)
 
-            self.logger.info(f"Successfully uploaded {local_path} to {cloud_path}")
+            self.logger.info(
+                f"Successfully uploaded {local_path} to {cloud_path}"
+            )
             return True
 
         except Exception as e:
-            self.logger.error(f"Failed to upload {local_path} to {cloud_path}: {e}")
+            self.logger.error(
+                f"Failed to upload {local_path} to {cloud_path}: {e}"
+            )
             return False
 
     def download_file(self, cloud_path: str, local_path: str = None) -> str:
@@ -236,7 +292,8 @@ class CloudStorageManager:
 
         Args:
             cloud_path: Cloud storage path
-            local_path: Local destination path (optional, creates temp file if None)
+            local_path: Local destination path (optional).
+                A temporary file is created if None.
 
         Returns:
             Local file path
@@ -246,7 +303,10 @@ class CloudStorageManager:
         if local_path is None:
             # Create temporary file
             suffix = Path(key).suffix
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            temp_file = tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=suffix,
+            )
             local_path = temp_file.name
             temp_file.close()
 
@@ -258,11 +318,18 @@ class CloudStorageManager:
                 blob = bucket_obj.blob(key)
                 blob.download_to_filename(local_path)
             elif self.provider == 'azure':
-                blob_client = self.client.get_blob_client(container=bucket, blob=key)
+                blob_client = self.client.get_blob_client(
+                    container=bucket,
+                    blob=key,
+                )
                 with open(local_path, 'wb') as download_file:
-                    download_file.write(blob_client.download_blob().readall())
+                    download_file.write(
+                        blob_client.download_blob().readall()
+                    )
 
-            self.logger.info(f"Successfully downloaded {cloud_path} to {local_path}")
+            self.logger.info(
+                f"Successfully downloaded {cloud_path} to {local_path}"
+            )
             return local_path
 
         except Exception as e:
@@ -294,14 +361,23 @@ class CloudStorageManager:
                 blob = bucket_obj.blob(key)
                 return blob.download_as_text(encoding=encoding)
             elif self.provider == 'azure':
-                blob_client = self.client.get_blob_client(container=bucket, blob=key)
+                blob_client = self.client.get_blob_client(
+                    container=bucket,
+                    blob=key,
+                )
                 return blob_client.download_blob(encoding=encoding).readall()
 
         except Exception as e:
-            self.logger.error(f"Failed to read text file {cloud_path}: {e}")
+            self.logger.error(
+                f"Failed to read text file {cloud_path}: {e}"
+            )
             raise
 
-    def read_jsonl_file(self, cloud_path: str, max_lines: int = None) -> Iterator[Dict]:
+    def read_jsonl_file(
+        self,
+        cloud_path: str,
+        max_lines: int | None = None,
+    ) -> Iterator[Dict]:
         """
         Read JSONL file line by line from cloud storage
 
@@ -352,7 +428,12 @@ class CloudStorageManager:
             except json.JSONDecodeError:
                 self.logger.warning("Invalid JSON line skipped")
 
-    def write_text_file(self, cloud_path: str, content: str, encoding: str = 'utf-8') -> bool:
+    def write_text_file(
+        self,
+        cloud_path: str,
+        content: str,
+        encoding: str = 'utf-8',
+    ) -> bool:
         """
         Write text content to cloud storage
 
@@ -365,7 +446,11 @@ class CloudStorageManager:
             Success status
         """
         # Create temporary file and upload
-        with tempfile.NamedTemporaryFile(mode='w', encoding=encoding, delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(
+            mode='w',
+            encoding=encoding,
+            delete=False,
+        ) as temp_file:
             temp_file.write(content)
             temp_path = temp_file.name
 
@@ -389,14 +474,20 @@ class CloudStorageManager:
 
         try:
             if self.provider == 's3':
-                self.client.head_object(Bucket=bucket, Key=key)
+                self.client.head_object(
+                    Bucket=bucket,
+                    Key=key,
+                )
                 return True
             elif self.provider == 'gcs':
                 bucket_obj = self.client.bucket(bucket)
                 blob = bucket_obj.blob(key)
                 return blob.exists()
             elif self.provider == 'azure':
-                blob_client = self.client.get_blob_client(container=bucket, blob=key)
+                blob_client = self.client.get_blob_client(
+                    container=bucket,
+                    blob=key,
+                )
                 return blob_client.exists()
 
         except Exception:
@@ -434,7 +525,10 @@ class CloudStorageManager:
                     'content_type': blob.content_type
                 }
             elif self.provider == 'azure':
-                blob_client = self.client.get_blob_client(container=bucket, blob=key)
+                blob_client = self.client.get_blob_client(
+                    container=bucket,
+                    blob=key,
+                )
                 properties = blob_client.get_blob_properties()
                 return {
                     'size': properties.size,
@@ -444,7 +538,9 @@ class CloudStorageManager:
                 }
 
         except Exception as e:
-            self.logger.error(f"Failed to get file info for {cloud_path}: {e}")
+            self.logger.error(
+                f"Failed to get file info for {cloud_path}: {e}"
+            )
             raise
 
     def _parse_cloud_path(self, cloud_path: str) -> Tuple[str, str]:
@@ -452,7 +548,8 @@ class CloudStorageManager:
         Parse cloud storage path into bucket and key
 
         Args:
-            cloud_path: Cloud storage path (s3://bucket/key, gs://bucket/key, etc.)
+            cloud_path: Cloud storage path
+                (e.g. ``s3://bucket/key`` or ``gs://bucket/key``)
 
         Returns:
             Tuple of (bucket, key)
@@ -487,16 +584,20 @@ def get_storage_client(config: Dict) -> CloudStorageManager:
         storage_config = {
             'access_key': config.get('storage', {}).get('access_key'),
             'secret_key': config.get('storage', {}).get('secret_key'),
-            'region': config.get('storage', {}).get('region', 'us-east-1')
+            'region': config.get('storage', {}).get('region', 'us-east-1'),
         }
     elif provider == 'gcs':
         storage_config = {
-            'credentials_path': config.get('storage', {}).get('credentials_path')
+            'credentials_path': config.get('storage', {}).get(
+                'credentials_path'
+            )
         }
     elif provider == 'azure':
         storage_config = {
-            'connection_string': config.get('storage', {}).get('connection_string'),
-            'account_url': config.get('storage', {}).get('account_url')
+            'connection_string': config.get('storage', {}).get(
+                'connection_string'
+            ),
+            'account_url': config.get('storage', {}).get('account_url'),
         }
     else:
         raise ValueError(f"Unsupported storage provider: {provider}")
