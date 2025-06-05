@@ -178,6 +178,7 @@ def get_total_lines(file_path: str) -> int:
 def convert_jsonl_to_parquet(input_file: str, output_file: str, config: Dict, batch_size: int = 1000):
     """
     Convert JSONL file to Parquet format
+    using a cloud storage client for reading
 
     Args:
         input_file: Path to input JSONL file
@@ -186,6 +187,9 @@ def convert_jsonl_to_parquet(input_file: str, output_file: str, config: Dict, ba
         batch_size: Batch size for processing
     """
     logger = logging.getLogger(__name__)
+
+    # Initialize cloud storage client
+    storage_client = get_storage_client(config)
 
     # Get schema configuration
     schema_config = config.get('schema', {})
@@ -204,8 +208,10 @@ def convert_jsonl_to_parquet(input_file: str, output_file: str, config: Dict, ba
 
     with tqdm(total=total_lines, desc="Converting to Parquet") as pbar:
         while processed_lines < total_lines:
-            # Load batch
-            documents = load_jsonl_batch(input_file, batch_size, processed_lines)
+            # Load batch from cloud storage
+            documents = load_jsonl_batch_from_cloud(
+                storage_client, input_file, batch_size, processed_lines
+            )
 
             if not documents:
                 break
