@@ -6,7 +6,6 @@ pytest.importorskip("torch")
 
 import yaml
 from pathlib import Path
-import torch
 import subprocess
 import sys
 import json
