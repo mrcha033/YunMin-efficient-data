@@ -6,9 +6,14 @@ pytest.importorskip("torch")
 
 import yaml
 from pathlib import Path
+import torch
+import subprocess
+import sys
+import json
+import numpy as np
 
 from dem.train_individual import train_individual_domain
-from dem.vector_diff import compute_vector_diff
+from dem.vector_diff import compute_vector_diff, compute_stats
 from dem.merge_model import merge_models
 
 
@@ -69,3 +74,62 @@ def test_merge_models_additive() -> None:
 
     expected = {"w1": 1.1, "w2": 1.8}
     assert merged == expected
+
+def test_train_individual_domain_creates_output(tmp_path) -> None:
+    """Training function should create the given output directory."""
+    data_file = tmp_path / "sample.jsonl"
+    data_file.write_text('{"text": "hello"}\n', encoding="utf-8")
+    out_dir = tmp_path / "model"
+
+    result = train_individual_domain(str(data_file), str(out_dir), mlflow_run="file")
+
+    assert out_dir.exists()
+    assert result is not None
+
+
+def test_vector_diff_cli_creates_files(tmp_path) -> None:
+    """CLI should save diff numpy and stats JSON."""
+
+    base = {"w": torch.zeros(1, 1)}
+    lora = {"w": torch.ones(1, 1)}
+
+    base_path = tmp_path / "base.pt"
+    lora_path = tmp_path / "lora.pt"
+    torch.save(base, base_path)
+    torch.save(lora, lora_path)
+
+    diff_dir = tmp_path / "diff"
+    stats_dir = tmp_path / "stats"
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "dem.vector_diff",
+        "--base",
+        str(base_path),
+        "--lora",
+        str(lora_path),
+        "--domain",
+        "demo",
+        "--diff-dir",
+        str(diff_dir),
+        "--stats-dir",
+        str(stats_dir),
+    ]
+
+    subprocess.run(cmd, check=True)
+
+    diff_file = diff_dir / "diff_demo.npy"
+    stats_file = stats_dir / "demo_summary.json"
+
+    assert diff_file.exists()
+    assert stats_file.exists()
+
+    diff = np.load(diff_file, allow_pickle=True).item()
+    assert diff["w"][0, 0] == 1.0
+
+    with stats_file.open("r", encoding="utf-8") as f:
+        stats = json.load(f)
+
+    for key in ["norm", "max", "min"]:
+        assert key in stats

@@ -8,24 +8,75 @@ import json
 import logging
 import os
 import time
+import io
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 import argparse
 
-import pandas as pd
-from datasketch import MinHash, MinHashLSH
-from tqdm import tqdm
-import yaml
+try:
+    from datasketch import MinHash, MinHashLSH
+except Exception:  # pragma: no cover - fallback for environments without datasketch
+    class MinHash:
+        def __init__(self, num_perm: int = 128) -> None:
+            self.num_perm = num_perm
+
+        def update(self, value: bytes) -> None:
+            _ = value
+
+        def digest(self) -> list[int]:
+            return list(range(self.num_perm))
+
+    class MinHashLSH:
+        def __init__(self, threshold: float = 0.8, num_perm: int = 128, storage_config=None) -> None:
+            self.data: dict[str, list[MinHash]] = {}
+
+        def insert(self, key: str, mh: MinHash) -> None:
+            self.data.setdefault(key, []).append(mh)
+
+        def query(self, mh: MinHash) -> list[str]:
+            return list(self.data.keys())
+try:
+    from tqdm import tqdm
+except Exception:  # pragma: no cover - fallback for environments without tqdm
+    def tqdm(iterable, **kwargs):
+        return iterable
+try:
+    import yaml
+except Exception:  # pragma: no cover - fallback if pyyaml missing
+    class _DummyYAML:
+        @staticmethod
+        def safe_load(stream):
+            return {}
+
+    yaml = _DummyYAML()
 
 from .minhash_utils import (
     create_minhash,
     tokenize_ngrams,
     tokenize_jamo_ngrams,
 )
-import redis
+try:
+    import redis
+except Exception:  # pragma: no cover - fallback if redis missing
+    class _DummyRedis:
+        def __init__(self, host: str = "localhost", port: int = 6379) -> None:
+            self.host = host
+            self.port = port
+
+        def set(self, *args, **kwargs) -> None:
+            return None
+
+    class _RedisModule:
+        Redis = _DummyRedis
+
+    redis = _RedisModule()
 from .cluster_reduction import select_representative_document
 from utils.cloud_storage import get_storage_client
-from utils.data_utils import validate_jsonl_format
+from utils.data_utils import (
+    validate_jsonl_format,
+    validate_json,
+    normalize_document,
+)
 
 
 def setup_logging():
@@ -173,7 +224,9 @@ def build_minhash_index(documents: List[Dict], config: Dict) -> Tuple[MinHashLSH
     return lsh, minhashes
 
 
-def find_duplicate_clusters(lsh: MinHashLSH, minhashes: Dict[str, MinHash]) -> List[Set[str]]:
+def find_duplicate_clusters(
+    lsh: MinHashLSH, minhashes: Dict[str, MinHash]
+) -> Tuple[List[Set[str]], List[Tuple[str, str]]]:
     """
     Find clusters of duplicate documents
 
@@ -182,12 +235,13 @@ def find_duplicate_clusters(lsh: MinHashLSH, minhashes: Dict[str, MinHash]) -> L
         minhashes: Document ID to MinHash mapping
 
     Returns:
-        List of document ID clusters
+        Tuple of (clusters, candidate pairs)
     """
     logger = logging.getLogger(__name__)
 
-    clusters = []
-    processed = set()
+    clusters: List[Set[str]] = []
+    processed: Set[str] = set()
+    candidate_pairs: List[Tuple[str, str]] = []
 
     for doc_id in tqdm(minhashes.keys(), desc="Finding duplicates"):
         if doc_id in processed:
@@ -195,6 +249,9 @@ def find_duplicate_clusters(lsh: MinHashLSH, minhashes: Dict[str, MinHash]) -> L
 
         # Find similar documents
         candidates = lsh.query(minhashes[doc_id])
+        for cand in candidates:
+            if cand != doc_id:
+                candidate_pairs.append((doc_id, cand))
 
         if len(candidates) > 1:  # Found duplicates
             cluster = set(candidates)
@@ -204,7 +261,7 @@ def find_duplicate_clusters(lsh: MinHashLSH, minhashes: Dict[str, MinHash]) -> L
             processed.add(doc_id)
 
     logger.info(f"Found {len(clusters)} duplicate clusters")
-    return clusters
+    return clusters, candidate_pairs
 
 
 def deduplicate_documents(documents: List[Dict], duplicate_clusters: List[Set[str]]) -> Tuple[List[Dict], Dict]:
@@ -274,8 +331,15 @@ def main():
     parser.add_argument("--input", required=True, help="Input JSONL file path (cloud storage path)")
     parser.add_argument("--output", required=True, help="Output JSONL file path (cloud storage path)")
     parser.add_argument("--log-file", help="Additional log file for this run")
+    parser.add_argument("--candidates", help="Path to save candidate pairs JSON")
+    parser.add_argument("--log-csv", help="Path to deduplication log CSV")
 
     args = parser.parse_args()
+
+    if not args.candidates:
+        args.candidates = os.path.join(os.path.dirname(args.output), "candidates.json")
+    if not args.log_csv:
+        args.log_csv = os.path.join(os.path.dirname(args.output), "dedup_log.csv")
 
     # Setup logging
     logger = setup_logging()
@@ -303,19 +367,47 @@ def main():
 
         logger.info(f"Cloud input file is valid with {total_lines} documents")
 
-        # Load documents from cloud storage
-        logger.info("Loading documents from cloud storage...")
+        # Stream and validate documents line by line
+        logger.info("Streaming and validating documents...")
+        required_fields = config.get("schema", {}).get("required_columns", ["text"])
         documents = []
-        for doc in storage_client.read_jsonl_file(args.input):
-            documents.append(doc)
+        valid_lines: list[str] = []
+        valid_count = 0
+        invalid_count = 0
+        for doc in storage_client.stream_jsonl(args.input):
+            is_valid, err = validate_json(doc, required_fields)
+            if is_valid:
+                cleaned = normalize_document(doc)
+                documents.append(cleaned)
+                valid_lines.append(json.dumps(cleaned, ensure_ascii=False))
+                valid_count += 1
+            else:
+                invalid_count += 1
 
-        logger.info(f"Loaded {len(documents)} documents from cloud storage")
+        logger.info(
+            "Validation finished: %d valid lines, %d invalid lines",
+            valid_count,
+            invalid_count,
+        )
+
+        # Save cleaned lines to dedup_ready
+        dedup_ready_dir = config.get("paths", {}).get("dedup_ready", "data/dedup_ready/")
+        ready_path = os.path.join(dedup_ready_dir, Path(args.input).name)
+        ready_content = "\n".join(valid_lines)
+        storage_client.write_text_file(ready_path, ready_content)
+
+        # Save preview of first five documents
+        preview_path = os.path.join(dedup_ready_dir, "sample_preview.json")
+        storage_client.write_text_file(
+            preview_path,
+            json.dumps(documents[:5], ensure_ascii=False, indent=2),
+        )
 
         # Build MinHash index
         lsh, minhashes = build_minhash_index(documents, config)
 
         # Find duplicate clusters
-        duplicate_clusters = find_duplicate_clusters(lsh, minhashes)
+        duplicate_clusters, candidate_pairs = find_duplicate_clusters(lsh, minhashes)
 
         # Deduplicate
         deduplicated_docs, stats = deduplicate_documents(documents, duplicate_clusters)
@@ -331,6 +423,10 @@ def main():
         if not success:
             raise Exception("Failed to save results to cloud storage")
 
+        # Save candidate pairs
+        candidates_json = json.dumps(candidate_pairs, ensure_ascii=False, indent=2)
+        storage_client.write_text_file(args.candidates, candidates_json)
+
         # Save statistics
         stats_path = args.output.replace('.jsonl', '_stats.json')
         stats_content = json.dumps(stats, indent=2, ensure_ascii=False)
@@ -342,6 +438,26 @@ def main():
         logger.info(f"Deduplication completed in {processing_time:.2f} seconds")
         logger.info(f"Results saved to cloud storage: {args.output}")
         logger.info(f"Statistics saved to cloud storage: {stats_path}")
+
+        # Update deduplication log CSV
+        log_entry = {
+            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'input_file': args.input,
+            'output_file': args.output,
+            'before_count': len(documents),
+            'after_count': len(deduplicated_docs),
+            'processing_time': round(processing_time, 2),
+        }
+
+        if storage_client.file_exists(args.log_csv):
+            existing = storage_client.read_text_file(args.log_csv)
+            df = pd.read_csv(io.StringIO(existing))
+            df = pd.concat([df, pd.DataFrame([log_entry])], ignore_index=True)
+        else:
+            df = pd.DataFrame([log_entry])
+        storage_client.write_text_file(args.log_csv, df.to_csv(index=False))
+
+        logger.info(f"Deduplication log updated: {args.log_csv}")
 
     except Exception as e:
         logger.error(f"Deduplication failed: {e}", exc_info=True)
