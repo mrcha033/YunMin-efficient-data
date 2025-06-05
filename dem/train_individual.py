@@ -1,97 +1,113 @@
-"""Simplified LoRA fine-tuning utilities."""
+"""LoRA fine-tuning utilities using HuggingFace Transformers."""
 
 from __future__ import annotations
 
-from typing import Dict, Union, Optional
 from pathlib import Path
-import json
+from typing import Optional
 
+import logging
+import yaml
+import pandas as pd
+import json
 import torch
-from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-import mlflow
+from torch.utils.data import DataLoader, TensorDataset
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import LoraConfig, get_peft_model
+
+logger = logging.getLogger(__name__)
+
+
+def load_config(config_path: str) -> dict:
+    """Load YAML configuration."""
+    with open(config_path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
 
 
 def train_individual_domain(
-    inputs: Union[torch.Tensor, str],
-    targets_or_outdir: Union[torch.Tensor, str],
-    epochs: int = 200,
-    lr: float = 0.1,
-    use_fsdp: bool = False,
-    mlflow_run: Optional[str] = None,
-) -> Dict[str, torch.Tensor]:
-    """Train a dummy LoRA adapter.
+    data_path: str,
+    domain: str,
+    config_path: str = "configs/dem_config.yaml",
+    output_dir: Optional[str] = None,
+    log_dir: str = "logs",
+    summary_dir: str = "summary",
+) -> str:
+    """Fine-tune the base model for ``domain`` using LoRA."""
 
-    The function supports two modes for unit tests:
+    cfg = load_config(config_path)
+    base_name = cfg["base_model"].get("name") or cfg["base_model"].get("path")
+    training_cfg = cfg.get("training", {})
+    lora_cfg = cfg.get("lora", {})
 
-    1. **Tensor mode** – ``inputs`` and ``targets_or_outdir`` are tensors. A
-       tiny linear regression loop is run and the resulting weight is
-       returned.
-    2. **File mode** – ``inputs`` is treated as a path to a JSONL file and
-       ``targets_or_outdir`` as an output directory path.  The function creates
-       the directory and saves a dummy weight derived from the text length.  In
-       this mode ``epochs`` and ``lr`` are ignored.
+    output_dir = output_dir or f"models/lora_{domain}"
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    Path(log_dir).mkdir(parents=True, exist_ok=True)
+    Path(summary_dir).mkdir(parents=True, exist_ok=True)
 
-    Args:
-        inputs: Either input tensor or JSONL path.
-        targets_or_outdir: Either target tensor or output directory path.
-        epochs: Number of gradient descent steps to run (tensor mode only).
-        lr: Learning rate (tensor mode only).
-        use_fsdp: Wrap model with FSDP/ZeRO-3 if True.
-        mlflow_run: Optional MLflow run name for metric logging.
+    log_file = Path(log_dir) / f"train_{domain}.log"
+    logging.basicConfig(level=logging.INFO, handlers=[logging.FileHandler(log_file), logging.StreamHandler()])
 
-    Returns:
-        Dictionary containing a ``"lora_weight"`` tensor.
-    """
+    tokenizer = AutoTokenizer.from_pretrained(base_name)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    model = AutoModelForCausalLM.from_pretrained(base_name)
 
-    if isinstance(inputs, str):
-        data_path = Path(inputs)
-        out_dir = Path(str(targets_or_outdir))
-        out_dir.mkdir(parents=True, exist_ok=True)
+    lora_config = LoraConfig(
+        r=lora_cfg.get("r", 8),
+        lora_alpha=lora_cfg.get("alpha", 32),
+        lora_dropout=lora_cfg.get("dropout", 0.1),
+        target_modules=lora_cfg.get("target_modules", []),
+    )
+    model = get_peft_model(model, lora_config)
 
-        texts = []
-        with data_path.open("r", encoding="utf-8") as f:
-            for line in f:
-                try:
-                    obj = json.loads(line)
-                    texts.append(obj.get("text", ""))
-                except json.JSONDecodeError:
-                    continue
+    texts = []
+    with open(data_path, "r", encoding="utf-8") as f:
+        for line in f:
+            try:
+                texts.append(json.loads(line)["text"])
+            except Exception:
+                continue
 
-        length = float(len(" ".join(texts)))
-        weight = torch.tensor([[length]])
-        torch.save({"lora_weight": weight}, out_dir / "adapter.pt")
-        return {"lora_weight": weight}
+    enc = tokenizer(
+        texts,
+        padding="max_length",
+        truncation=True,
+        max_length=min(32, tokenizer.model_max_length),
+        return_tensors="pt",
+    )
+    dataset = TensorDataset(enc.input_ids, enc.attention_mask, enc.input_ids.clone())
+    dataloader = DataLoader(dataset, batch_size=training_cfg.get("batch_size", 1))
+    optimizer = torch.optim.AdamW(model.parameters(), lr=training_cfg.get("learning_rate", 5e-5))
+    losses = []
 
-    # tensor mode
-    inputs_t = inputs
-    targets = targets_or_outdir  # type: ignore[assignment]
+    model.train()
+    for epoch in range(training_cfg.get("max_epochs", 1)):
+        for batch in dataloader:
+            optimizer.zero_grad()
+            outputs = model(input_ids=batch[0], attention_mask=batch[1], labels=batch[2])
+            loss = outputs.loss
+            loss.backward()
+            optimizer.step()
+            losses.append(loss.item())
+            logger.info("loss=%f", loss.item())
 
-    linear = torch.nn.Linear(inputs_t.size(1), targets.size(1), bias=False)
-    if use_fsdp:
-        if not torch.distributed.is_initialized():
-            torch.distributed.init_process_group("gloo", rank=0, world_size=1)
-        linear = FSDP(linear)
-    optimizer = torch.optim.SGD(linear.parameters(), lr=lr)
+    model.save_pretrained(output_dir)
+    adapter_bin = Path(output_dir) / "adapter_model.bin"
 
-    run = mlflow.start_run(run_name=mlflow_run) if mlflow_run else None
-    for step in range(epochs):
-        optimizer.zero_grad()
-        preds = linear(inputs_t)
-        loss = torch.mean((preds - targets) ** 2)
-        loss.backward()
-        optimizer.step()
-        if run:
-            mlflow.log_metric("loss", loss.item(), step=step)
+    pd.DataFrame({"loss": losses}).to_csv(Path(summary_dir) / f"train_{domain}.csv", index=False)
 
-    if run:
-        mlflow.end_run()
-
-    weight = linear.weight.detach().cpu()
-    return {"lora_weight": weight}
+    logger.info("Training finished")
+    return str(adapter_bin)
 
 
 if __name__ == "__main__":  # pragma: no cover - manual usage
-    x = torch.eye(2)
-    y = 2 * torch.eye(2)
-    result = train_individual_domain(x, y)
-    print(result)
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Train LoRA adapter for a domain")
+    parser.add_argument("--config", default="configs/dem_config.yaml")
+    parser.add_argument("--data", required=True, help="Path to JSONL dataset")
+    parser.add_argument("--domain", required=True, help="Domain name")
+    parser.add_argument("--output-dir", default=None)
+    args = parser.parse_args()
+
+    train_individual_domain(args.data, args.domain, args.config, args.output_dir)
+
