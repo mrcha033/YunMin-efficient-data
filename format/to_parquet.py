@@ -25,6 +25,7 @@ except Exception:  # pragma: no cover - fallback if PyYAML missing
     yaml = None  # type: ignore
 
 from .parquet_utils import create_schema, validate_parquet_file
+from utils.cloud_storage import get_storage_client
 
 
 def setup_logging():
