@@ -51,6 +51,7 @@ chmod +x scripts/setup_env.sh
 # 스크립트는 requirements.txt 의 모든 패키지를 자동으로 설치합니다.
 # 가상환경을 직접 만든 경우 다음 명령으로 의존성을 설치할 수 있습니다.
 # pip install -r requirements.txt
+# Python 3.12 사용자는 PyTorch 2.2 이상 버전을 설치해야 합니다.
 # 가상환경 활성화
 source venv/bin/activate  # Linux/Mac
 # 또는 venv\Scripts\activate  # Windows
