@@ -71,7 +71,11 @@ except Exception:  # pragma: no cover - fallback if redis missing
     redis = _RedisModule()
 from .cluster_reduction import select_representative_document
 from utils.cloud_storage import get_storage_client
-from utils.data_utils import validate_jsonl_format
+from utils.data_utils import (
+    validate_jsonl_format,
+    validate_json,
+    normalize_document,
+)
 
 
 def setup_logging():
@@ -349,13 +353,41 @@ def main():
 
         logger.info(f"Cloud input file is valid with {total_lines} documents")
 
-        # Load documents from cloud storage
-        logger.info("Loading documents from cloud storage...")
+        # Stream and validate documents line by line
+        logger.info("Streaming and validating documents...")
+        required_fields = config.get("schema", {}).get("required_columns", ["text"])
         documents = []
-        for doc in storage_client.read_jsonl_file(args.input):
-            documents.append(doc)
+        valid_lines: list[str] = []
+        valid_count = 0
+        invalid_count = 0
+        for doc in storage_client.stream_jsonl(args.input):
+            is_valid, err = validate_json(doc, required_fields)
+            if is_valid:
+                cleaned = normalize_document(doc)
+                documents.append(cleaned)
+                valid_lines.append(json.dumps(cleaned, ensure_ascii=False))
+                valid_count += 1
+            else:
+                invalid_count += 1
 
-        logger.info(f"Loaded {len(documents)} documents from cloud storage")
+        logger.info(
+            "Validation finished: %d valid lines, %d invalid lines",
+            valid_count,
+            invalid_count,
+        )
+
+        # Save cleaned lines to dedup_ready
+        dedup_ready_dir = config.get("paths", {}).get("dedup_ready", "data/dedup_ready/")
+        ready_path = os.path.join(dedup_ready_dir, Path(args.input).name)
+        ready_content = "\n".join(valid_lines)
+        storage_client.write_text_file(ready_path, ready_content)
+
+        # Save preview of first five documents
+        preview_path = os.path.join(dedup_ready_dir, "sample_preview.json")
+        storage_client.write_text_file(
+            preview_path,
+            json.dumps(documents[:5], ensure_ascii=False, indent=2),
+        )
 
         # Build MinHash index
         lsh, minhashes = build_minhash_index(documents, config)

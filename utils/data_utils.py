@@ -6,7 +6,7 @@ Common data validation and processing functions
 
 import json
 import logging
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 import re
 
@@ -93,6 +93,34 @@ def contains_korean(text: str) -> bool:
     """
     korean_pattern = re.compile(r'[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f]')
     return bool(korean_pattern.search(text))
+
+
+def validate_json(data: Any, required_fields: list[str] | None = None) -> tuple[bool, str]:
+    """Validate a single JSON object.
+
+    Parameters
+    ----------
+    data : Any
+        Parsed JSON data to validate.
+    required_fields : list[str] | None, optional
+        Fields that must be present and not empty.
+
+    Returns
+    -------
+    tuple[bool, str]
+        ``(True, "")`` if valid, otherwise ``(False, reason)``.
+    """
+
+    if not isinstance(data, dict):
+        return False, "Not a JSON object"
+
+    if required_fields:
+        for field in required_fields:
+            value = data.get(field)
+            if value is None or value == "" or value == []:
+                return False, f"Missing or empty field: {field}"
+
+    return True, ""
 
 
 def validate_document_schema(doc: Dict, required_fields: List[str]) -> Tuple[bool, List[str]]:
