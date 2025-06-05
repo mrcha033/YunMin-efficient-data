@@ -13,6 +13,7 @@ import argparse
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pyarrow.json as pj
 
 try:
     from tqdm import tqdm
@@ -210,9 +211,6 @@ def convert_jsonl_to_parquet(
     """
     logger = logging.getLogger(__name__)
 
-    # Initialize cloud storage client
-    storage_client = get_storage_client(config)
-
     # Get schema configuration
     schema_config = config.get('schema', {})
 
@@ -220,37 +218,30 @@ def convert_jsonl_to_parquet(
     schema = create_schema(schema_config)
     logger.info(f"Created schema: {schema}")
 
-    # Get total lines for progress tracking
-    total_lines = get_total_lines(input_file)
-    logger.info(f"Total lines in input file: {total_lines}")
-
-    # Process in batches and write incrementally
-    processed_lines = 0
+    # Prepare reader and writer
+    block_size = max(batch_size, 1) * 1024
+    read_opts = pj.ReadOptions(block_size=block_size)
+    parse_opts = pj.ParseOptions(explicit_schema=schema)
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    writer = pq.ParquetWriter(output_file, schema, compression=compression)
 
-    with tqdm(total=total_lines, desc="Converting to Parquet") as pbar:
-        while processed_lines < total_lines:
-            # Load batch
-            documents = load_jsonl_batch(
-                input_file, batch_size, processed_lines)
+    with pj.open_json(
+        input_file,
+        read_options=read_opts,
+        parse_options=parse_opts,
+    ) as reader, pq.ParquetWriter(
+        output_file,
+        schema,
+        compression=compression,
+    ) as writer:
+        for record_batch in reader:
+            writer.write_batch(record_batch)
 
-            if not documents:
-                break
-
-            # Clean and validate
-            cleaned_docs = clean_and_validate_documents(
-                documents, schema_config)
-
-            if cleaned_docs:
-                table = convert_to_parquet_batch(cleaned_docs, schema)
-                writer.write_table(table)
-
-            processed_lines += len(documents)
-            pbar.update(len(documents))
-
-    writer.close()
     logger.info(f"Saved Parquet file: {output_file}")
+
+    schema_path = os.path.join(os.path.dirname(output_file), "schema.txt")
+    with open(schema_path, "w", encoding="utf-8") as f:
+        for field in schema:
+            f.write(f"{field.name}:{field.type}\n")
 
     if validate_parquet_file(output_file):
         logger.info("Parquet file validation passed")
@@ -357,8 +348,7 @@ def main():
     parser.add_argument(
         "--config", default="configs/dataset_config.yaml", help="Configuration file")
     parser.add_argument("--input", required=True, help="Input JSONL file path")
-    parser.add_argument("--output", required=True,
-                        help="Output Parquet file path")
+    parser.add_argument("--domain", required=True, help="Domain name")
     parser.add_argument("--batch-size", type=int,
                         default=1000, help="Batch size for processing")
     parser.add_argument(
@@ -382,24 +372,26 @@ def main():
         config = load_config(args.config)
         logger.info(f"Loaded configuration from {args.config}")
 
+        output_path = os.path.join("data", "parquet", f"{args.domain}.parquet")
+
         # Convert JSONL to Parquet
-        logger.info(f"Converting {args.input} to {args.output}")
+        logger.info(f"Converting {args.input} to {output_path}")
         convert_jsonl_to_parquet(
             args.input,
-            args.output,
+            output_path,
             config,
             args.batch_size,
             compression=args.compression,
         )
 
         # Run benchmark if requested
-        if args.benchmark and os.path.exists(args.output):
+        if args.benchmark and os.path.exists(output_path):
             logger.info("Running loading speed benchmark...")
             benchmark_results = benchmark_loading_speed(
-                args.input, args.output)
+                args.input, output_path)
 
             # Save benchmark results
-            benchmark_file = args.output.replace('.parquet', '_benchmark.json')
+            benchmark_file = output_path.replace('.parquet', '_benchmark.json')
             with open(benchmark_file, 'w', encoding='utf-8') as f:
                 json.dump(benchmark_results, f, indent=2)
 
