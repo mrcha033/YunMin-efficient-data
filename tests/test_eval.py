@@ -45,7 +45,6 @@ def test_compute_metrics_non_zero_scores() -> None:
     assert scores["rougeL"] > 0
     assert scores["bert_score_f1"] > 0
 
-
 def test_compute_metrics_simple() -> None:
     """Metrics should return scores for identical sentences."""
     references = ["안녕하세요"]
