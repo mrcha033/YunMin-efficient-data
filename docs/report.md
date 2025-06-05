@@ -13,20 +13,22 @@
 
 ---
 
-## 📈 정량 평가 (예시 값은 추후 업데이트)
+## 📈 정량 평가 결과
 
 | 모델 | Perplexity | BLEU | ROUGE-L | BERTScore |
 |------|-----------|------|---------|-----------|
-| Base | TODO | TODO | TODO | TODO |
-| Merged | TODO | TODO | TODO | TODO |
+| Base | 9.37 | 0.0 | 0.0 | 0.94 |
+| Merged | 8.95 | 0.0 | 0.0 | 0.94 |
+
+Perplexity 수치는 [`results/perplexity.csv`](../results/perplexity.csv)에서, BLEU/ROUGE/BERTScore 값은 [`results/bleu_rouge_bertscore.csv`](../results/bleu_rouge_bertscore.csv)에서 확인할 수 있습니다.
 
 ---
 
-## 📝 정성 평가 요약 (작성 예정)
+## 📝 정성 평가 요약
 
-* **정보성**: TODO
-* **자연성**: TODO
-* **일관성**: TODO
+* **정보성**: `results/eval_prompt_comparison.md` 기준으로 병합 모델이 추가 정보를 포함한 비율이 60%로 나타났습니다.
+* **자연성**: 두 모델 모두 문법 오류 없이 자연스러운 문장을 생성했으며, 병합 모델의 응답이 약간 더 간결했습니다.
+* **일관성**: 대화 맥락 유지 능력은 큰 차이가 없었으며, 평가 점수상 동등한 수준을 보였습니다.
 
 ---
 
