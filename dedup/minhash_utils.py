@@ -47,6 +47,33 @@ def tokenize_ngrams(text: str, n: int = 5) -> List[str]:
     return ngrams
 
 
+def tokenize_jamo_ngrams(text: str, n: int = 3) -> List[str]:
+    """Create jamo character n-grams from text."""
+    jamo_chars: List[str] = []
+
+    for char in text:
+        code = ord(char)
+        if 0xAC00 <= code <= 0xD7A3:
+            syllable_index = code - 0xAC00
+            lead = 0x1100 + syllable_index // 588
+            vowel = 0x1161 + (syllable_index % 588) // 28
+            tail_index = syllable_index % 28
+            jamo_chars.append(chr(lead))
+            jamo_chars.append(chr(vowel))
+            if tail_index:
+                jamo_chars.append(chr(0x11A7 + tail_index))
+        else:
+            jamo_chars.append(char)
+
+    if len(jamo_chars) < n:
+        return [''.join(jamo_chars)]
+
+    ngrams = []
+    for i in range(len(jamo_chars) - n + 1):
+        ngrams.append(''.join(jamo_chars[i:i + n]))
+    return ngrams
+
+
 def create_minhash(ngrams: List[str], num_perm: int = 128) -> MinHash:
     """
     Create MinHash signature from n-grams

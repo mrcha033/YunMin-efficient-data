@@ -88,6 +88,15 @@ class TestCloudStorageManager(unittest.TestCase):
         self.assertEqual(documents[1]['lang'], 'en')
         self.assertEqual(documents[2]['domain'], 'news')
 
+    @patch('utils.cloud_storage.smart_open')
+    def test_stream_jsonl(self, mock_open):
+        """Test streaming JSONL via smart_open"""
+        mock_open.return_value.__enter__.return_value = self.jsonl_content.split('\n')
+
+        storage = CloudStorageManager('s3')
+        docs = list(storage.stream_jsonl('s3://bucket/file.jsonl'))
+        self.assertEqual(len(docs), 3)
+
     @patch('utils.cloud_storage.boto3')
     def test_write_text_file(self, mock_boto3):
         """Test writing text file to cloud storage"""

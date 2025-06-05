@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Dict, Union
+from typing import Dict, Union, Optional
 from pathlib import Path
 import json
 
 import torch
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+import mlflow
 
 
 def train_individual_domain(
@@ -14,6 +16,8 @@ def train_individual_domain(
     targets_or_outdir: Union[torch.Tensor, str],
     epochs: int = 200,
     lr: float = 0.1,
+    use_fsdp: bool = False,
+    mlflow_run: Optional[str] = None,
 ) -> Dict[str, torch.Tensor]:
     """Train a dummy LoRA adapter.
 
@@ -32,6 +36,8 @@ def train_individual_domain(
         targets_or_outdir: Either target tensor or output directory path.
         epochs: Number of gradient descent steps to run (tensor mode only).
         lr: Learning rate (tensor mode only).
+        use_fsdp: Wrap model with FSDP/ZeRO-3 if True.
+        mlflow_run: Optional MLflow run name for metric logging.
 
     Returns:
         Dictionary containing a ``"lora_weight"`` tensor.
@@ -60,18 +66,28 @@ def train_individual_domain(
     inputs_t = inputs
     targets = targets_or_outdir  # type: ignore[assignment]
 
-    weight = torch.zeros(inputs_t.size(1), targets.size(1), requires_grad=True)
+    linear = torch.nn.Linear(inputs_t.size(1), targets.size(1), bias=False)
+    if use_fsdp:
+        if not torch.distributed.is_initialized():
+            torch.distributed.init_process_group("gloo", rank=0, world_size=1)
+        linear = FSDP(linear)
+    optimizer = torch.optim.SGD(linear.parameters(), lr=lr)
 
-    for _ in range(epochs):
-        preds = inputs_t @ weight
+    run = mlflow.start_run(run_name=mlflow_run) if mlflow_run else None
+    for step in range(epochs):
+        optimizer.zero_grad()
+        preds = linear(inputs_t)
         loss = torch.mean((preds - targets) ** 2)
         loss.backward()
+        optimizer.step()
+        if run:
+            mlflow.log_metric("loss", loss.item(), step=step)
 
-        with torch.no_grad():
-            weight -= lr * weight.grad
-            weight.grad.zero_()
+    if run:
+        mlflow.end_run()
 
-    return {"lora_weight": weight.detach()}
+    weight = linear.weight.detach().cpu()
+    return {"lora_weight": weight}
 
 
 if __name__ == "__main__":  # pragma: no cover - manual usage

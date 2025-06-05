@@ -17,7 +17,12 @@ from datasketch import MinHash, MinHashLSH
 from tqdm import tqdm
 import yaml
 
-from .minhash_utils import create_minhash, tokenize_ngrams
+from .minhash_utils import (
+    create_minhash,
+    tokenize_ngrams,
+    tokenize_jamo_ngrams,
+)
+import redis
 from .cluster_reduction import select_representative_document
 from utils.cloud_storage import get_storage_client
 from utils.data_utils import validate_jsonl_format
@@ -117,10 +122,25 @@ def build_minhash_index(documents: List[Dict], config: Dict) -> Tuple[MinHashLSH
     num_perm = config.get('minhash_permutations', 128)
     threshold = config.get('similarity_threshold', 0.8)
     ngram_size = config.get('ngram_size', 5)
+    jamo_ngram_size = config.get('jamo_ngram_size', 3)
 
-    # Initialize LSH
-    lsh = MinHashLSH(threshold=threshold, num_perm=num_perm)
-    minhashes = {}
+    redis_cfg = config.get('redis', {})
+    storage_config = {
+        'type': 'redis',
+        'basename': redis_cfg.get('prefix', 'dedup').encode(),
+        'redis': {
+            'host': redis_cfg.get('host', 'localhost'),
+            'port': int(redis_cfg.get('port', 6379)),
+        },
+    }
+
+    # Initialize LSH backed by Redis
+    lsh = MinHashLSH(threshold=threshold, num_perm=num_perm, storage_config=storage_config)
+    minhashes: Dict[str, MinHash] = {}
+    redis_client = redis.Redis(
+        host=storage_config['redis']['host'],
+        port=storage_config['redis']['port'],
+    )
 
     logger.info(f"Building MinHash LSH index with {num_perm} permutations, threshold={threshold}")
 
@@ -130,16 +150,24 @@ def build_minhash_index(documents: List[Dict], config: Dict) -> Tuple[MinHashLSH
         if len(text.strip()) < 10:  # Skip very short texts
             continue
 
-        # Create n-grams and MinHash
-        ngrams = tokenize_ngrams(text, ngram_size)
-        if len(ngrams) < 5:  # Skip texts with too few n-grams
+        # Create n-grams (word and jamo) and MinHash
+        word_ngrams = tokenize_ngrams(text, ngram_size)
+        jamo_ngrams = tokenize_jamo_ngrams(text, jamo_ngram_size)
+        combined = word_ngrams + jamo_ngrams
+        if len(combined) < 5:
             continue
 
-        minhash = create_minhash(ngrams, num_perm)
+        minhash = create_minhash(combined, num_perm)
         minhashes[str(doc_id)] = minhash
 
         # Add to LSH index
         lsh.insert(str(doc_id), minhash)
+
+        # Store signature for later inspection
+        redis_client.set(
+            f"{storage_config['basename'].decode()}:sig:{doc_id}",
+            json.dumps(list(minhash.digest())),
+        )
 
     logger.info(f"Created MinHash index with {len(minhashes)} documents")
     return lsh, minhashes

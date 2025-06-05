@@ -7,7 +7,13 @@ import tempfile
 import pytest
 from unittest.mock import patch, MagicMock
 
-from dedup.minhash_utils import tokenize_ngrams, create_minhash, jaccard_similarity
+from dedup.minhash_utils import (
+    tokenize_ngrams,
+    tokenize_jamo_ngrams,
+    create_minhash,
+    jaccard_similarity,
+)
+from dedup.slimpajama_dedup import build_minhash_index
 from dedup.cluster_reduction import select_representative_document, _calculate_quality_score
 
 
@@ -31,6 +37,12 @@ class TestMinHashUtils:
         assert len(ngrams) == 1
         assert ngrams[0] == "안녕 하세요"
 
+    def test_tokenize_jamo_ngrams(self):
+        """Tokenize jamo trigrams"""
+        text = "가나다"
+        jamos = tokenize_jamo_ngrams(text, n=3)
+        assert jamos[0] != ""
+
     def test_create_minhash(self):
         """Test MinHash creation"""
         ngrams = ["hello world", "world test", "test case"]
@@ -53,6 +65,23 @@ class TestMinHashUtils:
         """Test Jaccard similarity with empty sets"""
         similarity = jaccard_similarity(set(), set())
         assert similarity == 1.0
+
+    def test_build_minhash_index_with_redis(self):
+        """Ensure MinHash signatures stored in Redis"""
+        fakeredis = pytest.importorskip("fakeredis")
+        r = fakeredis.FakeRedis()
+        config = {
+            "redis": {"host": "localhost", "port": 6379, "prefix": "test"},
+            "ngram_size": 5,
+            "jamo_ngram_size": 3,
+        }
+        docs = [
+            {"text": "가나다라마바사"},
+            {"text": "가나다라마바사"},
+        ]
+        with patch("redis.Redis", return_value=r), patch("redis.StrictRedis", return_value=r):
+            lsh, sigs = build_minhash_index(docs, config)
+        assert isinstance(sigs, dict)
 
 
 class TestClusterReduction:

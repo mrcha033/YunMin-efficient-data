@@ -44,6 +44,13 @@ except ImportError:
     AzureError = Exception  # type: ignore
     HAS_AZURE = True
 
+try:
+    from smart_open import open as smart_open
+    HAS_SMART_OPEN = True
+except ImportError:  # pragma: no cover - fallback without smart_open
+    smart_open = open  # type: ignore[misc]
+    HAS_SMART_OPEN = False
+
 
 class CloudStorageManager:
     """
@@ -315,12 +322,35 @@ class CloudStorageManager:
             line = line.strip()
             if not line:
                 continue
-
             try:
                 yield json.loads(line)
             except json.JSONDecodeError as e:
-                self.logger.warning(f"Invalid JSON at line {i+1} in {cloud_path}: {e}")
+                self.logger.warning(
+                    f"Invalid JSON at line {i+1} in {cloud_path}: {e}"
+                )
                 continue
+
+    def stream_file_lines(
+        self, cloud_path: str, encoding: str = "utf-8"
+    ) -> Iterator[str]:
+        """Yield lines from a file using smart_open for streaming."""
+        with smart_open(cloud_path, "r", encoding=encoding) as fh:
+            for line in fh:
+                yield line.rstrip("\n")
+
+    def stream_jsonl(
+        self, cloud_path: str, max_lines: int | None = None
+    ) -> Iterator[Dict]:
+        """Stream JSONL records from cloud storage."""
+        for i, line in enumerate(self.stream_file_lines(cloud_path)):
+            if max_lines and i >= max_lines:
+                break
+            if not line:
+                continue
+            try:
+                yield json.loads(line)
+            except json.JSONDecodeError:
+                self.logger.warning("Invalid JSON line skipped")
 
     def write_text_file(self, cloud_path: str, content: str, encoding: str = 'utf-8') -> bool:
         """
