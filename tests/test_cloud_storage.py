@@ -8,8 +8,6 @@ import json
 import os
 from unittest.mock import Mock, patch, MagicMock
 
-import sys
-sys.path.append('..')
 
 from utils.cloud_storage import CloudStorageManager, get_storage_client
 from utils.data_utils import validate_jsonl_format
