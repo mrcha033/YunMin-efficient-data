@@ -11,6 +11,14 @@ import pytest
 pytest.importorskip("pandas")
 
 import pandas as pd
+try:
+    import torch  # noqa: F401
+except Exception:
+    pytest.skip("torch not available", allow_module_level=True)
+from format.to_parquet import (
+    convert_jsonl_to_parquet,
+    benchmark_dataloader_speed,
+)
 
 
 def _time_read(func, path: Path, **kwargs) -> tuple[float, int]:
@@ -40,6 +48,19 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def test_dataloader_benchmark(tmp_path) -> None:
+    """Run the DataLoader benchmark on tiny sample files."""
+    jsonl = tmp_path / "sample.jsonl"
+    jsonl.write_text('{"text":"a","tokens":["a"]}\n{"text":"b","tokens":["b"]}\n', encoding="utf-8")
+    parquet = tmp_path / "sample.parquet"
+    config = {"schema": {"required_columns": ["text", "tokens"], "column_types": {"text": "string", "tokens": "list[string]"}}}
+    convert_jsonl_to_parquet(str(jsonl), str(parquet), config, batch_size=1)
+
+    results = benchmark_dataloader_speed(str(jsonl), str(parquet), batch_size=1, num_samples=2)
+    assert results["parquet_time_ms"] >= 0
+
+
 if __name__ == "__main__":
     args = parse_args()
     benchmark(args.parquet, args.jsonl)
+

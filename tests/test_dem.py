@@ -1,10 +1,10 @@
 """Tests for the DEM (Data Efficiency Method) module."""
 
 import pytest
-
-pytest.importorskip("torch")
-
-import torch
+try:
+    import torch  # noqa: F401
+except Exception:
+    pytest.skip("torch not available", allow_module_level=True)
 
 from dem.train_individual import train_individual_domain
 from dem.vector_diff import compute_vector_diff

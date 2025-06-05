@@ -1,5 +1,7 @@
 import json
 from pathlib import Path
+import pytest
+pytest.importorskip("datasketch")
 
 from dedup.mapreduce_dedup_driver import run_dedup_mapreduce
 

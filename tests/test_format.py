@@ -23,6 +23,9 @@ def test_convert_jsonl_to_parquet(tmp_path) -> None:
     out = tmp_path / "out.parquet"
 
     config = {"schema": {"required_columns": ["text"], "column_types": {"text": "string"}}}
-    convert_jsonl_to_parquet(str(sample), str(out), config, batch_size=1, compression="brotli")
-    table = pq.read_table(out)
+    convert_jsonl_to_parquet(str(sample), str(out), config, batch_size=1)
+    pf = pq.ParquetFile(out)
+    comp = pf.metadata.row_group(0).column(0).compression
+    assert comp == "BROTLI"
+    table = pf.read()
     assert table.num_rows == 2
