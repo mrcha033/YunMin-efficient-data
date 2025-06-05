@@ -9,6 +9,19 @@ import logging
 import os
 import time
 from typing import Dict, List
+
+import psutil
+try:  # pragma: no cover - torch may be unavailable
+    import torch
+    from torch.utils.data import Dataset, DataLoader
+except Exception:  # pragma: no cover - fallback stubs
+    torch = None
+
+    class Dataset:  # type: ignore
+        pass
+
+    def DataLoader(*args, **kwargs):  # type: ignore
+        raise ImportError("torch is required for DataLoader benchmark")
 import argparse
 
 import pyarrow as pa
@@ -18,9 +31,21 @@ import pyarrow.json as pj
 try:
     from tqdm import tqdm
 except Exception:  # pragma: no cover - fallback if tqdm missing
+    class DummyTqdm(list):  # pragma: no cover - simple fallback
+        def __init__(self, iterable=None, **kwargs):
+            super().__init__(iterable or [])
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+        def update(self, n=1) -> None:  # pragma: no cover - no-op
+            pass
+
     def tqdm(iterable=None, **kwargs):
-        """Return the iterable unchanged when tqdm is unavailable."""
-        return iterable if iterable is not None else []
+        return DummyTqdm(iterable, **kwargs)
 try:
     import yaml
 except Exception:  # pragma: no cover - fallback if PyYAML missing
@@ -188,6 +213,46 @@ def convert_to_parquet_batch(documents: List[Dict], schema: pa.Schema) -> pa.Tab
     return pa.table(arrays, schema=schema)
 
 
+class JSONLDataset(Dataset):
+    """Dataset for reading JSONL files."""
+
+    def __init__(self, path: str, limit: int | None = None) -> None:
+        self.data: List[Dict] = []
+        with open(path, "r", encoding="utf-8") as fh:
+            for i, line in enumerate(fh):
+                if limit is not None and i >= limit:
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    self.data.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+
+    def __len__(self) -> int:  # pragma: no cover - trivial
+        return len(self.data)
+
+    def __getitem__(self, idx: int) -> Dict:
+        return self.data[idx]
+
+
+class ParquetDataset(Dataset):
+    """Dataset for reading Parquet files."""
+
+    def __init__(self, path: str, columns: List[str] | None = None) -> None:
+        table = pq.read_table(path, columns=columns)
+        self.data = table.to_pydict()
+        self.columns = list(table.column_names)
+        self.length = table.num_rows
+
+    def __len__(self) -> int:  # pragma: no cover - trivial
+        return self.length
+
+    def __getitem__(self, idx: int) -> Dict:
+        return {col: self.data[col][idx] for col in self.columns}
+
+
 def get_total_lines(file_path: str) -> int:
     """Get total number of lines in a file"""
     with open(file_path, 'r', encoding='utf-8') as f:
@@ -225,6 +290,18 @@ def convert_jsonl_to_parquet(
     read_opts = pj.ReadOptions(block_size=block_size)
     parse_opts = pj.ParseOptions(explicit_schema=schema)
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    # Column-level compression: text with Brotli, tokens with Zstd
+    compression_map = {"text": "brotli", "tokens": "zstd"}
+    writer = pq.ParquetWriter(output_file, schema, compression=compression_map)
+
+    with tqdm(total=total_lines, desc="Converting to Parquet") as pbar:
+        while processed_lines < total_lines:
+            # Load batch
+            documents = load_jsonl_batch(
+                input_file, batch_size, processed_lines)
+
+            if not documents:
+                break
 
     with pj.open_json(
         input_file,
@@ -345,6 +422,62 @@ def benchmark_loading_speed(jsonl_file: str, parquet_file: str, batch_size: int 
     return results
 
 
+def benchmark_dataloader_speed(
+    jsonl_file: str,
+    parquet_file: str,
+    batch_size: int = 16,
+    num_samples: int = 32,
+    csv_path: str = "benchmark/io_speed.csv",
+) -> Dict:
+    """Benchmark DataLoader speed between JSONL and Parquet files."""
+    logger = logging.getLogger(__name__)
+
+    def _measure(dataset: Dataset) -> tuple[float, float]:
+        loader = DataLoader(dataset, batch_size=batch_size)
+        process = psutil.Process(os.getpid())
+        start_mem = process.memory_info().rss
+        start = time.perf_counter()
+        for _ in loader:
+            pass
+        elapsed = time.perf_counter() - start
+        mem_usage = (process.memory_info().rss - start_mem) / 1024 / 1024
+        return elapsed * 1000, mem_usage
+
+    json_ds = JSONLDataset(jsonl_file, limit=num_samples)
+    parquet_ds = ParquetDataset(parquet_file, columns=["text", "tokens"])
+
+    json_time, json_mem = _measure(json_ds)
+    pq_time, pq_mem = _measure(parquet_ds)
+
+    results = {
+        "jsonl_time_ms": json_time,
+        "jsonl_memory_mb": json_mem,
+        "parquet_time_ms": pq_time,
+        "parquet_memory_mb": pq_mem,
+        "time_improvement": json_time / pq_time if pq_time else 0,
+        "memory_improvement": json_mem / pq_mem if pq_mem else 0,
+    }
+
+    os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+    write_header = not os.path.exists(csv_path)
+    import csv
+
+    with open(csv_path, "a", newline="", encoding="utf-8") as csv_f:
+        writer = csv.DictWriter(csv_f, fieldnames=list(results.keys()))
+        if write_header:
+            writer.writeheader()
+        writer.writerow(results)
+
+    logger.info(
+        "DataLoader benchmark - JSONL: %.2fms %.2fMB, Parquet: %.2fms %.2fMB",
+        json_time,
+        json_mem,
+        pq_time,
+        pq_mem,
+    )
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser(description="JSONL to Parquet conversion")
     parser.add_argument(
@@ -389,19 +522,23 @@ def main():
         # Run benchmark if requested
         if args.benchmark and os.path.exists(output_path):
             logger.info("Running loading speed benchmark...")
-            benchmark_results = benchmark_loading_speed(
-                args.input, output_path)
+            benchmark_results = benchmark_dataloader_speed(
+                args.input, args.output, batch_size=args.batch_size
+            )
 
-            # Save benchmark results
-            benchmark_file = output_path.replace('.parquet', '_benchmark.json')
-            with open(benchmark_file, 'w', encoding='utf-8') as f:
+            benchmark_file = args.output.replace(".parquet", "_benchmark.json")
+            with open(benchmark_file, "w", encoding="utf-8") as f:
                 json.dump(benchmark_results, f, indent=2)
 
             logger.info(f"Benchmark results saved to: {benchmark_file}")
             logger.info(
-                f"Loading speed improvement: {benchmark_results.get('time_improvement', 0):.2f}x")
+                "Loading speed improvement: %.2fx",
+                benchmark_results.get("time_improvement", 0),
+            )
             logger.info(
-                f"Memory usage improvement: {benchmark_results.get('memory_improvement', 0):.2f}x")
+                "Memory usage improvement: %.2fx",
+                benchmark_results.get("memory_improvement", 0),
+            )
 
         end_time = time.time()
         processing_time = end_time - start_time

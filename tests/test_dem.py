@@ -1,7 +1,6 @@
 """Tests for the DEM (Data Efficiency Method) module."""
 
 import pytest
-
 pytest.importorskip("torch")
 
 import yaml

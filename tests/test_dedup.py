@@ -5,6 +5,7 @@ Unit tests for deduplication module
 import json
 import tempfile
 import pytest
+pytest.importorskip("datasketch")
 from unittest.mock import patch, MagicMock
 
 from dedup.minhash_utils import (
