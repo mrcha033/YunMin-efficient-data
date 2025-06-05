@@ -15,8 +15,16 @@ import argparse
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-from tqdm import tqdm
-import yaml
+
+try:
+    from tqdm import tqdm
+except Exception:  # pragma: no cover - fallback if tqdm missing
+    def tqdm(iterable=None, **kwargs):
+        return iterable if iterable is not None else []
+try:
+    import yaml
+except Exception:  # pragma: no cover - fallback if PyYAML missing
+    yaml = None  # type: ignore
 
 from .parquet_utils import create_schema, validate_parquet_file
 from utils.cloud_storage import get_storage_client
@@ -37,6 +45,8 @@ def setup_logging():
 
 def load_config(config_path: str) -> Dict:
     """Load configuration from YAML file"""
+    if yaml is None:
+        raise ImportError("PyYAML is required for configuration loading")
     with open(config_path, 'r', encoding='utf-8') as f:
         return yaml.safe_load(f)
 
