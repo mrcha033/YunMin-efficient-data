@@ -5,14 +5,14 @@ storage:
   provider: "s3"  # Options: s3, gcs, azure
   bucket: "yunmin-data"
   region: "ap-northeast-2"
-  
+
   # AWS S3 Configuration
   access_key: null  # Set via environment variable AWS_ACCESS_KEY_ID
   secret_key: null  # Set via environment variable AWS_SECRET_ACCESS_KEY
-  
+
   # GCS Configuration (alternative)
   # credentials_path: "path/to/service-account.json"  # Set via GOOGLE_APPLICATION_CREDENTIALS
-  
+
   # Azure Configuration (alternative)
   # connection_string: null  # Set via AZURE_STORAGE_CONNECTION_STRING
   # account_url: null  # Set via AZURE_STORAGE_ACCOUNT_URL
@@ -23,7 +23,7 @@ paths:
   dedup_ready: "s3://yunmin-data/dedup_ready/"
   deduped: "s3://yunmin-data/deduped/"
   parquet: "s3://yunmin-data/parquet/"
-  
+
   # Local cache directory for temporary files
   local_cache: "./cache/"
 
@@ -35,7 +35,7 @@ schema:
     - "source"
     - "lang"
     - "domain"
-  
+
   column_types:
     text: "string"
     tokens: "list[string]"
@@ -67,10 +67,10 @@ processing:
   chunk_size: 1000  # Number of samples to process at once
   max_workers: 4
   encoding: "utf-8"
-  
+
 # Validation
 validation:
   sample_size: 100  # Number of samples for validation
   check_format: true
   check_encoding: true
-  check_schema: true 
+  check_schema: true
