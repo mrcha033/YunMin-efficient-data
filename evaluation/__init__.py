@@ -1,8 +1,10 @@
-"""
-YunMin-EfficientData Evaluation Module
+"""YunMin-EfficientData Evaluation Module."""
 
-This module provides model evaluation and performance comparison functionality.
-"""
+from .compute_metrics import compute_metrics
+from .eval_runner import run_evaluation
 
 __version__ = "1.0.0"
-__all__ = [] 
+__all__ = [
+    "compute_metrics",
+    "run_evaluation",
+]

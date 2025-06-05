@@ -1,0 +1,5 @@
+# Placeholder scoring rules for manual evaluation
+criteria:
+  - informativeness
+  - naturalness
+  - consistency
