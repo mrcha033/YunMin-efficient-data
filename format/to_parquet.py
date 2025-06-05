@@ -8,11 +8,9 @@ import json
 import logging
 import os
 import time
-from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 import argparse
 
-import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
@@ -27,7 +25,6 @@ except Exception:  # pragma: no cover - fallback if PyYAML missing
     yaml = None  # type: ignore
 
 from .parquet_utils import create_schema, validate_parquet_file
-from utils.cloud_storage import get_storage_client
 
 
 def setup_logging():
@@ -80,6 +77,25 @@ def load_jsonl_batch_from_cloud(storage_client, file_path: str, batch_size: int 
         current_line += 1
 
     return documents
+
+
+def load_jsonl_batch(file_path: str, batch_size: int = 1000, start_line: int = 0) -> List[Dict]:
+    """Load a batch of JSONL documents from a local file."""
+    docs: List[Dict] = []
+    with open(file_path, "r", encoding="utf-8") as fh:
+        for i, line in enumerate(fh):
+            if i < start_line:
+                continue
+            if len(docs) >= batch_size:
+                break
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                docs.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return docs
 
 
 def clean_and_validate_documents(documents: List[Dict], schema_config: Dict) -> List[Dict]:
@@ -175,7 +191,13 @@ def get_total_lines(file_path: str) -> int:
         return sum(1 for _ in f)
 
 
-def convert_jsonl_to_parquet(input_file: str, output_file: str, config: Dict, batch_size: int = 1000):
+def convert_jsonl_to_parquet(
+    input_file: str,
+    output_file: str,
+    config: Dict,
+    batch_size: int = 1000,
+    compression: str = "brotli",
+) -> None:
     """
     Convert JSONL file to Parquet format
     using a cloud storage client for reading
@@ -202,50 +224,38 @@ def convert_jsonl_to_parquet(input_file: str, output_file: str, config: Dict, ba
     total_lines = get_total_lines(input_file)
     logger.info(f"Total lines in input file: {total_lines}")
 
-    # Process in batches
-    tables = []
+    # Process in batches and write incrementally
     processed_lines = 0
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    writer = pq.ParquetWriter(output_file, schema, compression=compression)
 
     with tqdm(total=total_lines, desc="Converting to Parquet") as pbar:
         while processed_lines < total_lines:
-            # Load batch from cloud storage
-            documents = load_jsonl_batch_from_cloud(
-                storage_client, input_file, batch_size, processed_lines
-            )
+            # Load batch
+            documents = load_jsonl_batch(
+                input_file, batch_size, processed_lines)
 
             if not documents:
                 break
 
             # Clean and validate
-            cleaned_docs = clean_and_validate_documents(documents, schema_config)
+            cleaned_docs = clean_and_validate_documents(
+                documents, schema_config)
 
             if cleaned_docs:
-                # Convert to PyArrow table
                 table = convert_to_parquet_batch(cleaned_docs, schema)
-                tables.append(table)
+                writer.write_table(table)
 
             processed_lines += len(documents)
             pbar.update(len(documents))
 
-    # Concatenate all tables
-    if tables:
-        final_table = pa.concat_tables(tables)
-        logger.info(f"Created table with {len(final_table)} rows, {len(final_table.columns)} columns")
+    writer.close()
+    logger.info(f"Saved Parquet file: {output_file}")
 
-        # Create output directory
-        os.makedirs(os.path.dirname(output_file), exist_ok=True)
-
-        # Write to Parquet
-        pq.write_table(final_table, output_file, compression='snappy')
-        logger.info(f"Saved Parquet file: {output_file}")
-
-        # Validate output file
-        if validate_parquet_file(output_file):
-            logger.info("Parquet file validation passed")
-        else:
-            logger.error("Parquet file validation failed")
+    if validate_parquet_file(output_file):
+        logger.info("Parquet file validation passed")
     else:
-        logger.warning("No valid documents found, no Parquet file created")
+        logger.error("Parquet file validation failed")
 
 
 def benchmark_loading_speed(jsonl_file: str, parquet_file: str, batch_size: int = 16) -> Dict:
@@ -294,9 +304,11 @@ def benchmark_loading_speed(jsonl_file: str, parquet_file: str, batch_size: int 
         tracemalloc.stop()
 
         results['jsonl']['time'] = jsonl_time * 1000  # Convert to ms
-        results['jsonl']['memory'] = jsonl_memory / 1024 / 1024  # Convert to MB
+        results['jsonl']['memory'] = jsonl_memory / \
+            1024 / 1024  # Convert to MB
 
-        logger.info(f"JSONL loading: {jsonl_time*1000:.2f}ms, {jsonl_memory/1024/1024:.2f}MB")
+        logger.info(
+            f"JSONL loading: {jsonl_time*1000:.2f}ms, {jsonl_memory/1024/1024:.2f}MB")
 
     except Exception as e:
         logger.error(f"JSONL benchmark failed: {e}")
@@ -315,21 +327,25 @@ def benchmark_loading_speed(jsonl_file: str, parquet_file: str, batch_size: int 
         tracemalloc.stop()
 
         results['parquet']['time'] = parquet_time * 1000  # Convert to ms
-        results['parquet']['memory'] = parquet_memory / 1024 / 1024  # Convert to MB
+        results['parquet']['memory'] = parquet_memory / \
+            1024 / 1024  # Convert to MB
 
-        logger.info(f"Parquet loading: {parquet_time*1000:.2f}ms, {parquet_memory/1024/1024:.2f}MB")
+        logger.info(
+            f"Parquet loading: {parquet_time*1000:.2f}ms, {parquet_memory/1024/1024:.2f}MB")
 
     except Exception as e:
         logger.error(f"Parquet benchmark failed: {e}")
 
     # Calculate improvements
     if results['jsonl']['time'] > 0:
-        results['time_improvement'] = results['jsonl']['time'] / results['parquet']['time']
+        results['time_improvement'] = results['jsonl']['time'] / \
+            results['parquet']['time']
     else:
         results['time_improvement'] = 0
 
     if results['jsonl']['memory'] > 0:
-        results['memory_improvement'] = results['jsonl']['memory'] / results['parquet']['memory']
+        results['memory_improvement'] = results['jsonl']['memory'] / \
+            results['parquet']['memory']
     else:
         results['memory_improvement'] = 0
 
@@ -338,11 +354,21 @@ def benchmark_loading_speed(jsonl_file: str, parquet_file: str, batch_size: int 
 
 def main():
     parser = argparse.ArgumentParser(description="JSONL to Parquet conversion")
-    parser.add_argument("--config", default="configs/dataset_config.yaml", help="Configuration file")
+    parser.add_argument(
+        "--config", default="configs/dataset_config.yaml", help="Configuration file")
     parser.add_argument("--input", required=True, help="Input JSONL file path")
-    parser.add_argument("--output", required=True, help="Output Parquet file path")
-    parser.add_argument("--batch-size", type=int, default=1000, help="Batch size for processing")
-    parser.add_argument("--benchmark", action="store_true", help="Run loading speed benchmark")
+    parser.add_argument("--output", required=True,
+                        help="Output Parquet file path")
+    parser.add_argument("--batch-size", type=int,
+                        default=1000, help="Batch size for processing")
+    parser.add_argument(
+        "--compression",
+        choices=["brotli", "zstd"],
+        default="brotli",
+        help="Compression codec",
+    )
+    parser.add_argument("--benchmark", action="store_true",
+                        help="Run loading speed benchmark")
 
     args = parser.parse_args()
 
@@ -358,12 +384,19 @@ def main():
 
         # Convert JSONL to Parquet
         logger.info(f"Converting {args.input} to {args.output}")
-        convert_jsonl_to_parquet(args.input, args.output, config, args.batch_size)
+        convert_jsonl_to_parquet(
+            args.input,
+            args.output,
+            config,
+            args.batch_size,
+            compression=args.compression,
+        )
 
         # Run benchmark if requested
         if args.benchmark and os.path.exists(args.output):
             logger.info("Running loading speed benchmark...")
-            benchmark_results = benchmark_loading_speed(args.input, args.output)
+            benchmark_results = benchmark_loading_speed(
+                args.input, args.output)
 
             # Save benchmark results
             benchmark_file = args.output.replace('.parquet', '_benchmark.json')
@@ -371,8 +404,10 @@ def main():
                 json.dump(benchmark_results, f, indent=2)
 
             logger.info(f"Benchmark results saved to: {benchmark_file}")
-            logger.info(f"Loading speed improvement: {benchmark_results.get('time_improvement', 0):.2f}x")
-            logger.info(f"Memory usage improvement: {benchmark_results.get('memory_improvement', 0):.2f}x")
+            logger.info(
+                f"Loading speed improvement: {benchmark_results.get('time_improvement', 0):.2f}x")
+            logger.info(
+                f"Memory usage improvement: {benchmark_results.get('memory_improvement', 0):.2f}x")
 
         end_time = time.time()
         processing_time = end_time - start_time

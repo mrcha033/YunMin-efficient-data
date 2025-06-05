@@ -24,7 +24,7 @@ def test_training_diff_and_merge() -> None:
     x = torch.eye(2)
     y = 2 * torch.eye(2)
 
-    lora = train_individual_domain(x, y, epochs=300, lr=0.2)
+    lora = train_individual_domain(x, y, epochs=5, lr=0.2, use_fsdp=False, mlflow_run="test")
     assert "lora_weight" in lora
 
     base = {"lora_weight": torch.zeros_like(lora["lora_weight"])}
@@ -63,7 +63,7 @@ def test_train_individual_domain_creates_output(tmp_path) -> None:
     data_file.write_text('{"text": "hello"}\n', encoding="utf-8")
     out_dir = tmp_path / "model"
 
-    result = train_individual_domain(str(data_file), str(out_dir))
+    result = train_individual_domain(str(data_file), str(out_dir), mlflow_run="file")
 
     assert out_dir.exists()
     assert result is not None
