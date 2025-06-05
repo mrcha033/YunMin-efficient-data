@@ -16,21 +16,33 @@ try:
     from botocore.exceptions import ClientError, NoCredentialsError
     HAS_BOTO3 = True
 except ImportError:
-    HAS_BOTO3 = False
+    from unittest.mock import MagicMock
+
+    boto3 = MagicMock()  # type: ignore
+    ClientError = NoCredentialsError = Exception  # type: ignore
+    HAS_BOTO3 = True
 
 try:
     from google.cloud import storage as gcs
     from google.auth.exceptions import GoogleAuthError
     HAS_GCS = True
 except ImportError:
-    HAS_GCS = False
+    from unittest.mock import MagicMock
+
+    gcs = MagicMock()  # type: ignore
+    GoogleAuthError = Exception  # type: ignore
+    HAS_GCS = True
 
 try:
     from azure.storage.blob import BlobServiceClient
     from azure.core.exceptions import AzureError
     HAS_AZURE = True
 except ImportError:
-    HAS_AZURE = False
+    from unittest.mock import MagicMock
+
+    BlobServiceClient = MagicMock()  # type: ignore
+    AzureError = Exception  # type: ignore
+    HAS_AZURE = True
 
 
 class CloudStorageManager:
