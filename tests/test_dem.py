@@ -1,5 +1,10 @@
-import torch
 """Tests for the DEM (Data Efficiency Method) module."""
+
+import pytest
+
+pytest.importorskip("torch")
+
+import torch
 
 from dem.train_individual import train_individual_domain
 from dem.vector_diff import compute_vector_diff

@@ -172,6 +172,14 @@ domain_weights:
 
 테스트 실행 시에는 저장소 루트를 `PYTHONPATH`에 추가해야 합니다.
 
+일부 테스트는 `pandas`, `pyarrow`, `torch`, `bert_score` 등 선택적 의존성에
+의존합니다. 이러한 패키지가 설치되지 않은 경우 해당 테스트는 자동으로
+건너뛰어집니다. 전체 테스트를 실행하려면 다음과 같이 환경을 설정합니다.
+
+```bash
+pip install pandas pyarrow torch bert-score rouge-score sacrebleu
+```
+
 ```bash
 # 단위 테스트 실행
 PYTHONPATH=. pytest
