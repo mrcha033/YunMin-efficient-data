@@ -19,6 +19,7 @@ try:
     from tqdm import tqdm
 except Exception:  # pragma: no cover - fallback if tqdm missing
     def tqdm(iterable=None, **kwargs):
+        """Return the iterable unchanged when tqdm is unavailable."""
         return iterable if iterable is not None else []
 try:
     import yaml
