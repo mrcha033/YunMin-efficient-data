@@ -34,7 +34,7 @@ docs/report.md                   # 최종 성능 평가 및 요약 보고서
 
 1. **스크립트 구성**
 
-   * 각 Phase 스크립트(`dedup.py`, `jsonl_to_parquet.py`, `train_individual.py`, `merge_model.py`)를 순차 호출
+   * 각 Phase 스크립트(`slimpajama_dedup.py`, `to_parquet.py`, `train_individual.py`, `merge_model.py`)를 순차 호출
    * 환경 변수 및 데이터 경로 자동 지정 (예: `.env` 또는 argparse)
 
 2. **로그 기록**
