@@ -17,7 +17,7 @@
 ```
 deduped/                    # 중복 제거 완료 JSONL 데이터
  ↓
-jsonl_to_parquet.py         # 변환 스크립트
+to_parquet.py               # 변환 스크립트
  ↓
 parquet_ready/              # Parquet 형식으로 저장된 출력 파일
  ↓

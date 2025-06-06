@@ -65,7 +65,7 @@ YunMin-efficient-data/
 ├── scripts/                  # 실행 자동화 및 공통 유틸
 │   ├── run_pipeline.sh      # 전체 파이프라인 실행 스크립트
 │   ├── setup_env.sh         # venv, requirements 설치 스크립트
-│   └── test_loading_speed.py# parquet vs jsonl I/O 벤치마크
+│   └── tests/test_loading_speed.py # parquet vs jsonl I/O 벤치마크
 │
 ├── configs/                  # 설정 파일 저장소
 │   ├── dataset_config.yaml  # S3 경로, 열 명세, 토큰화 설정 등
